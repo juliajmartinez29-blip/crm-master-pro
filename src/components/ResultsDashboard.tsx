@@ -21,6 +21,7 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { GeneratedCRMSystem, WhatsAppTemplate, CRMField } from '../types';
+import { ClientManager } from './ClientManager';
 import {
   copyToClipboard,
   downloadCSV,
@@ -36,12 +37,14 @@ interface ResultsDashboardProps {
 }
 
 type TabType = 'ficha' | 'plantillas' | 'colaboradores' | 'guia';
+type FichaSubView = 'clientes' | 'estructura';
 
 export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   crm,
   onOpenChatWithPrompt,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('ficha');
+  const [fichaSubView, setFichaSubView] = useState<FichaSubView>('clientes');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // WhatsApp template simulation state
@@ -183,7 +186,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             }`}
           >
             <FileSpreadsheet className="w-4 h-4" />
-            <span>1. Ficha de Cliente (CRM)</span>
+            <span>1. Gestor de Clientes & Ficha CRM</span>
             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-700 text-slate-300">
               {crm.fichaCliente.fields.length} campos
             </span>
@@ -235,26 +238,56 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
 
       {/* Main Tab Content */}
       <div className="p-5 sm:p-7">
-        {/* ================= TAB 1: FICHA DE CLIENTE ================= */}
+        {/* ================= TAB 1: FICHA DE CLIENTE Y GESTOR ================= */}
         {activeTab === 'ficha' && (
           <div className="space-y-6">
+            {/* Sub-view Navigation Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-                  {crm.fichaCliente.title}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">{crm.fichaCliente.description}</p>
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl w-fit">
+                <button
+                  type="button"
+                  id="subview-btn-clientes"
+                  onClick={() => setFichaSubView('clientes')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    fichaSubView === 'clientes'
+                      ? 'bg-white text-emerald-800 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Base de Datos de Clientes</span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded-full font-bold">
+                    Activo
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  id="subview-btn-estructura"
+                  onClick={() => setFichaSubView('estructura')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    fichaSubView === 'estructura'
+                      ? 'bg-white text-emerald-800 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Columnas & Definición CRM</span>
+                  <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full font-bold">
+                    {crm.fichaCliente.fields.length} campos
+                  </span>
+                </button>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   id="btn-download-csv-ficha"
                   onClick={handleDownloadFichaCSV}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                  title="Descargar plantilla de columnas para Google Sheets"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Descargar CSV para Google Sheets</span>
+                  <span>Descargar CSV Columnas</span>
                 </button>
                 <button
                   id="btn-copy-ficha"
@@ -264,7 +297,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                       .join('\n');
                     handleCopy('ficha-fields', text);
                   }}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                 >
                   {copiedId === 'ficha-fields' ? (
                     <>
@@ -274,7 +307,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                   ) : (
                     <>
                       <Copy className="w-3.5 h-3.5" />
-                      <span>Copiar Campos</span>
+                      <span>Copiar Estructura</span>
                     </>
                   )}
                 </button>
@@ -312,106 +345,132 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
               </div>
             </div>
 
-            {/* Structured Table */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 text-slate-900 uppercase font-semibold text-[11px] tracking-wider border-b border-slate-200">
-                    <tr>
-                      <th className="py-3 px-4">#</th>
-                      <th className="py-3 px-4">Nombre del Campo</th>
-                      <th className="py-3 px-4">Categoría</th>
-                      <th className="py-3 px-4">Tipo de Dato</th>
-                      <th className="py-3 px-4">Ejemplo Real</th>
-                      <th className="py-3 px-4">Para qué sirve / Importancia</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {crm.fichaCliente.fields.map((field, idx) => (
-                      <tr
-                        key={idx}
-                        className={`hover:bg-slate-50/80 transition-colors ${
-                          field.category.includes('Especialidad') ? 'bg-emerald-50/30' : ''
-                        }`}
-                      >
-                        <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">
-                          {idx + 1}
-                        </td>
-                        <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-1.5">
-                          <span>{field.name}</span>
-                          {field.isRequired && (
-                            <span className="text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded font-semibold">
-                              Req
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
-                              field.category === 'Datos Generales'
-                                ? 'bg-blue-100 text-blue-800'
-                                : field.category.includes('Especialidad')
-                                ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
-                                : field.category.includes('Preferencias')
-                                ? 'bg-purple-100 text-purple-800'
-                                : 'bg-amber-100 text-amber-900'
+            {/* SUB-VIEW 1: Real Client Manager */}
+            {fichaSubView === 'clientes' && (
+              <ClientManager
+                fields={crm.fichaCliente.fields}
+                businessName={crm.businessSummary.name}
+                currencySymbol={crm.businessSummary.currency === 'HNL' ? 'L' : '$'}
+                sampleData={crm.fichaCliente.sampleClientData}
+                onOpenChatWithPrompt={onOpenChatWithPrompt}
+              />
+            )}
+
+            {/* SUB-VIEW 2: Schema Column Definitions and Table */}
+            {fichaSubView === 'estructura' && (
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                    <span>Catálogo de Columnas y Tipos de Datos</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Estructura técnica optimizada para Google Sheets, Excel o Notion.
+                  </p>
+                </div>
+
+                {/* Structured Table */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-slate-700">
+                      <thead className="bg-slate-50 text-slate-900 uppercase font-semibold text-[11px] tracking-wider border-b border-slate-200">
+                        <tr>
+                          <th className="py-3 px-4">#</th>
+                          <th className="py-3 px-4">Nombre del Campo</th>
+                          <th className="py-3 px-4">Categoría</th>
+                          <th className="py-3 px-4">Tipo de Dato</th>
+                          <th className="py-3 px-4">Ejemplo Real</th>
+                          <th className="py-3 px-4">Para qué sirve / Importancia</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {crm.fichaCliente.fields.map((field, idx) => (
+                          <tr
+                            key={idx}
+                            className={`hover:bg-slate-50/80 transition-colors ${
+                              field.category.includes('Especialidad') ? 'bg-emerald-50/30' : ''
                             }`}
                           >
-                            {field.category}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                            {field.type}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-slate-600 italic">
-                          "{field.example}"
-                        </td>
-                        <td className="py-3 px-4 text-slate-600">
-                          {field.purpose}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Interactive Sample Client Profile Simulator */}
-            <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-emerald-600" />
-                  <h4 className="text-sm font-bold text-slate-900">
-                    Simulador: Vista previa de una Ficha de Cliente Real
-                  </h4>
+                            <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">
+                              {idx + 1}
+                            </td>
+                            <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-1.5">
+                              <span>{field.name}</span>
+                              {field.isRequired && (
+                                <span className="text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded font-semibold">
+                                  Req
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                                  field.category === 'Datos Generales'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : field.category.includes('Especialidad')
+                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                                    : field.category.includes('Preferencias')
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : 'bg-amber-100 text-amber-900'
+                                }`}
+                              >
+                                {field.category}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                                {field.type}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-600 italic">
+                              "{field.example}"
+                            </td>
+                            <td className="py-3 px-4 text-slate-600">
+                              {field.purpose}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <span className="text-[11px] text-slate-500">
-                  Así se ve el perfil registrado en tu base de datos
-                </span>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
-                {crm.fichaCliente.fields.map((f, i) => (
-                  <div key={i} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 transition-all hover:border-emerald-200">
-                    <div className="flex items-center justify-between gap-1 mb-0.5">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 truncate">
-                        {f.name}
-                      </span>
-                      {f.isRequired && (
-                        <span className="text-[9px] font-bold text-rose-600 bg-rose-50 px-1 py-0.2 rounded">
-                          Obligatorio
-                        </span>
-                      )}
+                {/* Interactive Sample Client Profile Simulator */}
+                <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <Eye className="w-4 h-4 text-emerald-600" />
+                      <h4 className="text-sm font-bold text-slate-900">
+                        Simulador: Vista previa de una Ficha de Cliente Real
+                      </h4>
                     </div>
-                    <span className="text-xs font-semibold text-slate-800 break-words block">
-                      {crm.fichaCliente.sampleClientData?.[f.name] || f.example}
+                    <span className="text-[11px] text-slate-500">
+                      Así se ve el perfil registrado en tu base de datos
                     </span>
                   </div>
-                ))}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                    {crm.fichaCliente.fields.map((f, i) => (
+                      <div key={i} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 transition-all hover:border-emerald-200">
+                        <div className="flex items-center justify-between gap-1 mb-0.5">
+                          <span className="text-[10px] uppercase font-bold text-slate-400 truncate">
+                            {f.name}
+                          </span>
+                          {f.isRequired && (
+                            <span className="text-[9px] font-bold text-rose-600 bg-rose-50 px-1 py-0.2 rounded">
+                              Obligatorio
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-semibold text-slate-800 break-words block">
+                          {crm.fichaCliente.sampleClientData?.[f.name] || f.example}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 

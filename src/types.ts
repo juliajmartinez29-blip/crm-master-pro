@@ -113,6 +113,13 @@ export interface GeneratedCRMSystem {
   }[];
 }
 
+export interface ClientRecord {
+  id: string;
+  createdAt: string;
+  updatedAt?: string;
+  data: Record<string, any>;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
