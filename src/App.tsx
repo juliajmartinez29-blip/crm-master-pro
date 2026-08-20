@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { BusinessForm } from './components/BusinessForm';
 import { ResultsDashboard } from './components/ResultsDashboard';
@@ -6,42 +6,102 @@ import { InteractiveChat } from './components/InteractiveChat';
 import { HelpModal } from './components/HelpModal';
 import { BusinessFormData, GeneratedCRMSystem, ChatMessage } from './types';
 import { BUSINESS_PRESETS } from './data/presets';
-import { Sparkles, AlertCircle, ArrowLeft, ShieldCheck, FileSpreadsheet, MessageSquare, HelpCircle } from 'lucide-react';
+import { generateCRMClientSide } from './services/geminiClient';
+import { Sparkles, AlertCircle, ArrowLeft, ShieldCheck, FileSpreadsheet, MessageSquare, HelpCircle, HardDrive } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
+const STORAGE_KEYS = {
+  FORM: 'crm_master_pro_form_data',
+  CRM: 'crm_master_pro_generated_crm',
+  CHAT: 'crm_master_pro_chat_history',
+};
+
 export default function App() {
-  const [formData, setFormData] = useState<BusinessFormData>(BUSINESS_PRESETS[0].data);
-  const [crmSystem, setCrmSystem] = useState<GeneratedCRMSystem | null>(null);
+  // Initialize state with LocalStorage support
+  const [formData, setFormData] = useState<BusinessFormData>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.FORM);
+      return saved ? JSON.parse(saved) : BUSINESS_PRESETS[0].data;
+    } catch {
+      return BUSINESS_PRESETS[0].data;
+    }
+  });
+
+  const [crmSystem, setCrmSystem] = useState<GeneratedCRMSystem | null>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CRM);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CHAT);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [externalPrompt, setExternalPrompt] = useState<string>('');
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
+
+  // Sync state to LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.FORM, JSON.stringify(formData));
+    } catch (e) {
+      console.warn('Could not save form data to localStorage', e);
+    }
+  }, [formData]);
+
+  useEffect(() => {
+    try {
+      if (crmSystem) {
+        localStorage.setItem(STORAGE_KEYS.CRM, JSON.stringify(crmSystem));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.CRM);
+      }
+    } catch (e) {
+      console.warn('Could not save CRM data to localStorage', e);
+    }
+  }, [crmSystem]);
+
+  useEffect(() => {
+    try {
+      if (chatHistory.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.CHAT, JSON.stringify(chatHistory));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.CHAT);
+      }
+    } catch (e) {
+      console.warn('Could not save chat history to localStorage', e);
+    }
+  }, [chatHistory]);
 
   const handleGenerateCRM = async () => {
     setIsLoading(true);
     setErrorMessage(null);
 
     try {
-      const response = await fetch('/api/generate-crm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
+      // Execute 100% Client-Side generation with Gemini direct integration / local engine
+      const generatedData = await generateCRMClientSide(formData);
 
-      const result = await response.json();
+      if (generatedData && generatedData.businessSummary) {
+        setCrmSystem(generatedData);
 
-      if (result.success && result.data) {
-        setCrmSystem(result.data);
-        // Add initial system assistant greeting in chat
-        setChatHistory([
-          {
-            id: 'init-bot',
-            role: 'assistant',
-            content: `¡Hola! Soy **CRM Master Pro**. He generado la estructura completa para **${result.data.businessSummary.name}** utilizando metodologías 100% gratuitas (Google Sheets, Notion y WhatsApp Business).\n\nPuedes explorar las pestañas de **Ficha de Cliente**, **Plantillas de WhatsApp**, **Control de Colaboradores** y la **Guía Paso a Paso**. Si deseas agregar o borrar algún campo, o cambiar algún mensaje, ¡escríbemelo aquí!`,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          },
-        ]);
+        const initialGreeting: ChatMessage = {
+          id: 'init-bot',
+          role: 'assistant',
+          content: `¡Hola! Soy **CRM Master Pro**. He generado la estructura completa para **${generatedData.businessSummary.name}** guardada de forma 100% segura en tu navegador.\n\nPuedes explorar las pestañas de **Ficha de Cliente**, **Plantillas de WhatsApp**, **Control de Colaboradores** y la **Guía Paso a Paso**. Si deseas agregar o borrar algún campo, o cambiar algún mensaje, ¡escríbemelo aquí!`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+
+        setChatHistory([initialGreeting]);
 
         // Launch celebratory confetti
         confetti({
@@ -50,11 +110,11 @@ export default function App() {
           origin: { y: 0.6 },
         });
       } else {
-        throw new Error(result.error || 'No se pudo generar el CRM');
+        throw new Error('No se pudo generar la estructura del CRM');
       }
     } catch (err: any) {
       console.error('Error generating CRM:', err);
-      setErrorMessage(err.message || 'Ocurrió un error al generar el CRM con IA. Inténtalo de nuevo.');
+      setErrorMessage(err.message || 'Ocurrió un error al generar el CRM. Inténtalo de nuevo.');
     } finally {
       setIsLoading(false);
     }
@@ -64,6 +124,12 @@ export default function App() {
     setCrmSystem(null);
     setChatHistory([]);
     setErrorMessage(null);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CRM);
+      localStorage.removeItem(STORAGE_KEYS.CHAT);
+    } catch (e) {
+      console.warn('Could not clear localStorage', e);
+    }
   };
 
   const handleOpenChatWithPrompt = (prompt: string) => {
@@ -176,7 +242,7 @@ export default function App() {
         ) : (
           /* View 2: Generated CRM Dashboard + Interactive Chat */
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <button
                 id="btn-back-to-edit"
                 onClick={() => setCrmSystem(null)}
@@ -186,14 +252,21 @@ export default function App() {
                 <span>Modificar datos del negocio</span>
               </button>
 
-              <button
-                id="btn-open-help-results"
-                onClick={() => setIsHelpOpen(true)}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-950/60 hover:bg-emerald-950/90 px-3 py-1.5 rounded-lg border border-emerald-800/70 transition-colors cursor-pointer"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-                <span>¿Cómo usar este CRM?</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-950/70 border border-emerald-800/80 px-2.5 py-1 rounded-lg">
+                  <HardDrive className="w-3 h-3" />
+                  <span>Guardado en LocalStorage</span>
+                </div>
+
+                <button
+                  id="btn-open-help-results"
+                  onClick={() => setIsHelpOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-950/60 hover:bg-emerald-950/90 px-3 py-1.5 rounded-lg border border-emerald-800/70 transition-colors cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>¿Cómo usar este CRM?</span>
+                </button>
+              </div>
             </div>
 
             {/* Results Dashboard Tabs */}
@@ -220,7 +293,7 @@ export default function App() {
       <footer className="w-full bg-[#080c16] border-t border-slate-800 py-5 text-center text-xs text-slate-500 relative z-10">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2.5">
           <span className="text-slate-400">CRM Master Pro • Asistente de Sistemas CRM Gratuitos para Negocios de Belleza & Salud</span>
-          <span className="text-slate-500">Google Sheets • Notion • WhatsApp Business • Gemini 2.5 Flash</span>
+          <span className="text-slate-500">Google Sheets • Notion • WhatsApp Business • 100% Client-Side LocalStorage</span>
         </div>
       </footer>
     </div>

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { ChatMessage, GeneratedCRMSystem, BusinessFormData } from '../types';
+import { refineCRMChatClientSide } from '../services/geminiClient';
 
 interface InteractiveChatProps {
   chatHistory: ChatMessage[];
@@ -79,44 +80,30 @@ export const InteractiveChat: React.FC<InteractiveChatProps> = ({
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/chat-refine', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: textToSend,
-          currentCRM,
-          businessData,
-          chatHistory: [...chatHistory, userMsg],
-        }),
-      });
+      // Execute 100% client-side AI refinement without server dependency
+      const resData = await refineCRMChatClientSide(textToSend, currentCRM, businessData);
 
-      const resData = await response.json();
+      const assistantMsg: ChatMessage = {
+        id: `bot-${Date.now()}`,
+        role: 'assistant',
+        content:
+          resData.replyText ||
+          'He procesado tu solicitud. Los cambios han sido reflejados en tu Sistema CRM.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        updatedCRM: resData.updatedCRM || undefined,
+      };
 
-      if (resData.success && resData.data) {
-        const assistantMsg: ChatMessage = {
-          id: `bot-${Date.now()}`,
-          role: 'assistant',
-          content:
-            resData.data.replyText ||
-            'He procesado tu solicitud. Los cambios han sido reflejados en tu Sistema CRM.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          updatedCRM: resData.data.updatedCRM || undefined,
-        };
+      setChatHistory((prev) => [...prev, assistantMsg]);
 
-        setChatHistory((prev) => [...prev, assistantMsg]);
-
-        if (resData.data.updatedCRM) {
-          onCRMUpdated(resData.data.updatedCRM);
-        }
-      } else {
-        throw new Error(resData.error || 'Error en la respuesta del asistente');
+      if (resData.updatedCRM) {
+        onCRMUpdated(resData.updatedCRM);
       }
     } catch (error: any) {
-      console.error('Error sending message:', error);
+      console.error('Error in client chat:', error);
       const errorMsg: ChatMessage = {
         id: `err-${Date.now()}`,
         role: 'assistant',
-        content: `⚠️ Hubo un inconveniente al comunicarse con la IA: ${error.message || 'Intenta de nuevo'}. Puedes seguir editando los campos manualmente.`,
+        content: `⚠️ Hubo un inconveniente al procesar la indicación: ${error.message || 'Intenta de nuevo'}.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setChatHistory((prev) => [...prev, errorMsg]);
