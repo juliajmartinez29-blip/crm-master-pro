@@ -22,6 +22,9 @@ import {
   ShieldAlert,
   Receipt,
   History,
+  Star,
+  Tag,
+  Compass,
 } from 'lucide-react';
 import { CRMField, ClientRecord, SaleRecord } from '../types';
 import { downloadCSV } from '../utils/exportUtils';
@@ -127,17 +130,35 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
     initialRecords.push({
       id: 'cli-001',
       createdAt: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-      data: sample1Data,
+      rating: 5,
+      referralSource: 'Instagram',
+      data: {
+        ...sample1Data,
+        'Calificación / Rating': '5 Estrellas',
+        'Referido Por / Origen': 'Instagram',
+      },
     });
     initialRecords.push({
       id: 'cli-002',
       createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      data: sample2Data,
+      rating: 4,
+      referralSource: 'Recomendación / Amigo o Familiar',
+      data: {
+        ...sample2Data,
+        'Calificación / Rating': '4 Estrellas',
+        'Referido Por / Origen': 'Recomendación / Amigo o Familiar',
+      },
     });
     initialRecords.push({
       id: 'cli-003',
       createdAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      data: sample3Data,
+      rating: 5,
+      referralSource: 'Rótulo / Paso por el Local',
+      data: {
+        ...sample3Data,
+        'Calificación / Rating': '5 Estrellas',
+        'Referido Por / Origen': 'Rótulo / Paso por el Local',
+      },
     });
 
     return initialRecords;
@@ -162,28 +183,40 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
     return [];
   });
 
-  // Sync sales on business change or local storage change
+  // Sync sales on business change, storage event, or custom CRM event
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(salesStorageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setSales(parsed);
-          return;
+    const syncSales = () => {
+      try {
+        const saved = localStorage.getItem(salesStorageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setSales(parsed);
+            return;
+          }
         }
+        setSales([]);
+      } catch (e) {
+        console.warn('Error syncing sales in ClientManager', e);
       }
-      setSales([]);
-    } catch (e) {
-      console.warn('Error syncing sales in ClientManager', e);
-    }
+    };
+
+    syncSales();
+
+    const handleUpdate = () => syncSales();
+    window.addEventListener('crm-data-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('crm-data-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, [salesStorageKey]);
 
   // State for search and filtering
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
 
-  // State for Modals
+  // State for Modals & Extended Client Fields
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<ClientRecord | null>(null);
   const [viewingClient, setViewingClient] = useState<ClientRecord | null>(null);
@@ -191,6 +224,10 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [formRating, setFormRating] = useState<number>(5);
+  const [hoverRating, setHoverRating] = useState<number | null>(null);
+  const [formReferralSource, setFormReferralSource] = useState<string>('Instagram');
+  const [formCustomReferral, setFormCustomReferral] = useState<string>('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
@@ -199,6 +236,7 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
     setSales(updated);
     try {
       localStorage.setItem(salesStorageKey, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('crm-data-updated'));
     } catch (e) {
       console.error('Error saving updated sale', e);
     }
@@ -241,6 +279,10 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
     });
     setFormData(initial);
     setFormErrors({});
+    setFormRating(5);
+    setHoverRating(null);
+    setFormReferralSource('Instagram');
+    setFormCustomReferral('');
     setEditingClient(null);
     setIsFormOpen(true);
   };
@@ -253,6 +295,27 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
     });
     setFormData(populated);
     setFormErrors({});
+    setFormRating(client.rating ?? (client.data['Calificación / Rating'] ? parseInt(String(client.data['Calificación / Rating'])) || 5 : 5));
+    setHoverRating(null);
+    
+    const existingRef = client.referralSource || client.data['Referido Por / Origen'] || 'Instagram';
+    const standardSources = [
+      'Instagram',
+      'Facebook',
+      'TikTok',
+      'Recomendación / Amigo o Familiar',
+      'Rótulo / Paso por el Local',
+      'WhatsApp / Campaña',
+      'Google Maps / Búsqueda Web',
+    ];
+    if (standardSources.includes(existingRef)) {
+      setFormReferralSource(existingRef);
+      setFormCustomReferral('');
+    } else {
+      setFormReferralSource('Otro');
+      setFormCustomReferral(existingRef);
+    }
+
     setEditingClient(client);
     setIsFormOpen(true);
   };
@@ -280,6 +343,14 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
       return;
     }
 
+    const finalReferral = formReferralSource === 'Otro' ? (formCustomReferral.trim() || 'Otro') : formReferralSource;
+
+    const mergedData = {
+      ...formData,
+      'Calificación / Rating': `${formRating} Estrellas`,
+      'Referido Por / Origen': finalReferral,
+    };
+
     if (editingClient) {
       // Update
       const updatedList = clients.map((c) =>
@@ -287,21 +358,27 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
           ? {
               ...c,
               updatedAt: new Date().toISOString(),
-              data: { ...formData },
+              rating: formRating,
+              referralSource: finalReferral,
+              data: mergedData,
             }
           : c
       );
       setClients(updatedList);
       showToast(`¡Cliente "${getClientDisplayName(formData)}" actualizado con éxito!`);
+      window.dispatchEvent(new CustomEvent('crm-data-updated'));
     } else {
       // Create
       const newClient: ClientRecord = {
         id: `cli-${Date.now().toString(36)}`,
         createdAt: new Date().toISOString(),
-        data: { ...formData },
+        rating: formRating,
+        referralSource: finalReferral,
+        data: mergedData,
       };
       setClients([newClient, ...clients]);
       showToast(`¡Cliente "${getClientDisplayName(formData)}" registrado con éxito!`);
+      window.dispatchEvent(new CustomEvent('crm-data-updated'));
       confetti({
         particleCount: 45,
         spread: 55,
@@ -324,6 +401,7 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
       setViewingClient(null);
     }
     showToast(`Cliente "${clientName}" eliminado.`);
+    window.dispatchEvent(new CustomEvent('crm-data-updated'));
   };
 
   // Helper to extract primary display name
@@ -378,6 +456,17 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
     };
 
     fields.forEach((f) => {
+      // Exclude rating and referral from dynamic list if present so we render them in our custom interactive UI block
+      if (
+        f.name.toLowerCase().includes('calificación') ||
+        f.name.toLowerCase().includes('calificacion') ||
+        f.name.toLowerCase().includes('rating') ||
+        f.name.toLowerCase().includes('referido') ||
+        f.name.toLowerCase().includes('origen')
+      ) {
+        return;
+      }
+
       if (map[f.category]) {
         map[f.category].push(f);
       } else {
@@ -551,27 +640,41 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
                       {/* Name & Contact */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-start gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
+                          <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0 mt-0.5 shadow-2xs">
                             {name.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-bold text-slate-900 text-xs sm:text-sm group-hover:text-emerald-700 transition-colors">
                                 {name}
                               </span>
+                              {/* Star Rating Badge */}
+                              <div className="inline-flex items-center gap-0.5 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded-md" title={`Calificación: ${client.rating || 5} estrellas`}>
+                                <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
+                                <span className="text-[10px] font-bold text-amber-800">
+                                  {client.rating || 5}
+                                </span>
+                              </div>
                               {clientDebt > 0 && (
                                 <span className="text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded">
                                   Debe: {formatAmount(clientDebt)}
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+
+                            {/* Referral Origin Badge & Contact details */}
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md border border-slate-200" title="Origen / Referido">
+                                <Compass className="w-2.5 h-2.5 text-slate-500" />
+                                <span>{client.referralSource || client.data['Referido Por / Origen'] || 'Instagram'}</span>
+                              </span>
+
                               {phone && (
                                 <a
                                   href={`https://wa.me/${phone.replace(/[^0-9]/g, '')}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200"
+                                  className="inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200 transition-colors"
                                   title="Enviar WhatsApp directo"
                                 >
                                   <Phone className="w-3 h-3 text-emerald-600" />
@@ -743,6 +846,91 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
                   <span>{formErrors['general']}</span>
                 </div>
               )}
+
+              {/* Special Section: Rating & Referral Origin */}
+              <div className="bg-gradient-to-br from-amber-50/50 via-slate-50 to-emerald-50/40 p-4 rounded-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                    <span>Fidelización, Calificación & Origen</span>
+                  </span>
+                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                    Control VIP
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Rating Selector */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Calificación / Rating del Cliente
+                    </label>
+                    <div className="flex items-center gap-1.5 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+                      {[1, 2, 3, 4, 5].map((star) => {
+                        const isFilled = (hoverRating !== null ? hoverRating : formRating) >= star;
+                        return (
+                          <button
+                            key={star}
+                            type="button"
+                            onMouseEnter={() => setHoverRating(star)}
+                            onMouseLeave={() => setHoverRating(null)}
+                            onClick={() => setFormRating(star)}
+                            className="p-1 text-slate-300 hover:scale-110 transition-transform cursor-pointer"
+                            title={`${star} Estrella${star > 1 ? 's' : ''}`}
+                          >
+                            <Star
+                              className={`w-5 h-5 transition-colors ${
+                                isFilled ? 'fill-amber-400 text-amber-500' : 'text-slate-300 fill-transparent'
+                              }`}
+                            />
+                          </button>
+                        );
+                      })}
+                      <span className="ml-auto text-[11px] font-bold text-slate-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">
+                        {formRating === 5 && '⭐⭐⭐⭐⭐ VIP / Fiel'}
+                        {formRating === 4 && '⭐⭐⭐⭐ Muy Bueno'}
+                        {formRating === 3 && '⭐⭐⭐ Regular'}
+                        {formRating === 2 && '⭐⭐ Ocasional'}
+                        {formRating === 1 && '⭐ Nuevo'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Referral Source Selector */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-800 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Compass className="w-3 h-3 text-slate-500" />
+                        <span>Referido Por / Origen</span>
+                      </span>
+                    </label>
+                    <select
+                      value={formReferralSource}
+                      onChange={(e) => setFormReferralSource(e.target.value)}
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-white focus:bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium"
+                    >
+                      <option value="Instagram">Instagram (Historias / Reel / DM)</option>
+                      <option value="Facebook">Facebook (Anuncios / Fanpage)</option>
+                      <option value="TikTok">TikTok (Contenido / Viral)</option>
+                      <option value="Recomendación / Amigo o Familiar">Recomendación / Amigo o Familiar</option>
+                      <option value="Rótulo / Paso por el Local">Rótulo / Paso por el Local</option>
+                      <option value="WhatsApp / Campaña">WhatsApp / Campaña Directa</option>
+                      <option value="Google Maps / Búsqueda Web">Google Maps / Búsqueda Web</option>
+                      <option value="Otro">Otro (Especifique abajo...)</option>
+                    </select>
+
+                    {formReferralSource === 'Otro' && (
+                      <input
+                        type="text"
+                        value={formCustomReferral}
+                        onChange={(e) => setFormCustomReferral(e.target.value)}
+                        placeholder="Ej. Volante, Evento de Moda, Convenio..."
+                        className="w-full text-xs p-2 rounded-xl border border-slate-200 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 mt-1.5"
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
 
               {Object.entries(categorizedFields).map(([category, catFields]) => {
                 if (catFields.length === 0) return null;
@@ -929,6 +1117,42 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
                   </a>
                 </div>
               )}
+
+              {/* Client Rating & Referral VIP Header Card */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-gradient-to-r from-amber-50/60 to-emerald-50/50 rounded-xl border border-slate-200">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 shadow-2xs">
+                    <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                      Calificación / Rating
+                    </span>
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                      {Array.from({ length: viewingClient.rating || 5 }).map((_, idx) => (
+                        <Star key={idx} className="w-3.5 h-3.5 fill-amber-400 text-amber-500 inline" />
+                      ))}
+                      <span className="ml-1 text-[11px] text-amber-800 font-bold">
+                        ({viewingClient.rating || 5} de 5)
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 shadow-2xs">
+                    <Compass className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                      Referido Por / Origen
+                    </span>
+                    <span className="text-xs font-bold text-slate-800">
+                      {viewingClient.referralSource || viewingClient.data['Referido Por / Origen'] || 'Instagram'}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
               {/* Categorized Fields Display */}
               {Object.entries(categorizedFields).map(([category, catFields]) => {

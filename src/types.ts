@@ -117,6 +117,8 @@ export interface ClientRecord {
   id: string;
   createdAt: string;
   updatedAt?: string;
+  rating?: number; // 1 to 5 stars
+  referralSource?: string; // e.g. Instagram, Recomendación, Rótulo, etc.
   data: Record<string, any>;
 }
 

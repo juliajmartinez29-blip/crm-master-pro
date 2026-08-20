@@ -61,28 +61,62 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
   );
 
   const clientsStorageKey = useMemo(
-    () => `crm_clients_db_${businessId || businessName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+    () => `crm_client_db_${businessId || businessName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
     [businessId, businessName]
   );
+
+  // Helper to extract primary display name from a client
+  const getClientDisplayName = (data: Record<string, any>): string => {
+    for (const key of Object.keys(data)) {
+      if (key.toLowerCase().includes('nombre') && data[key]) {
+        return String(data[key]);
+      }
+    }
+    const firstVal = Object.values(data).find((v) => v && String(v).trim().length > 0);
+    return firstVal ? String(firstVal) : 'Cliente';
+  };
+
+  // Helper to extract phone/whatsapp from a client
+  const getClientPhone = (data: Record<string, any>): string => {
+    for (const key of Object.keys(data)) {
+      const lower = key.toLowerCase();
+      if ((lower.includes('whatsapp') || lower.includes('teléfono') || lower.includes('telefono') || lower.includes('celular')) && data[key]) {
+        return String(data[key]);
+      }
+    }
+    return '';
+  };
 
   // 1. Registered Clients for Predictive Auto-complete
   const [registeredClients, setRegisteredClients] = useState<ClientRecord[]>([]);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(clientsStorageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setRegisteredClients(parsed);
-          return;
+    const syncRegisteredClients = () => {
+      try {
+        const saved = localStorage.getItem(clientsStorageKey) || localStorage.getItem(`crm_clients_db_${businessId || businessName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setRegisteredClients(parsed);
+            return;
+          }
         }
+        setRegisteredClients([]);
+      } catch (e) {
+        console.warn('Error reading clients for autocomplete', e);
       }
-      setRegisteredClients([]);
-    } catch (e) {
-      console.warn('Error reading clients for autocomplete', e);
-    }
-  }, [clientsStorageKey]);
+    };
+
+    syncRegisteredClients();
+
+    const handleUpdate = () => syncRegisteredClients();
+    window.addEventListener('crm-data-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('crm-data-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, [clientsStorageKey, businessId, businessName]);
 
   // 2. Collaborators State & Management
   const [collaborators, setCollaborators] = useState<CollaboratorItem[]>(() => {
@@ -283,34 +317,38 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
   // Filtered Client Predictive Options
   const filteredClientSuggestions = useMemo(() => {
     const term = formCliente.trim().toLowerCase();
-    if (!term) return [];
     return registeredClients.filter((c) => {
-      const name = Object.values(c.data).join(' ').toLowerCase();
-      return name.includes(term);
-    }).slice(0, 6);
+      const name = getClientDisplayName(c.data).toLowerCase();
+      const phone = getClientPhone(c.data).toLowerCase();
+      const allText = Object.values(c.data).join(' ').toLowerCase();
+      if (!term) return true;
+      return name.includes(term) || phone.includes(term) || allText.includes(term);
+    }).slice(0, 8);
   }, [formCliente, registeredClients]);
 
   // Filtered Collaborators Predictive Options
   const filteredCollabSuggestions = useMemo(() => {
     const term = formColaborador.trim().toLowerCase();
     const activeCollabs = collaborators.filter((c) => c.active);
-    if (!term) return activeCollabs.slice(0, 6);
-    return activeCollabs.filter((c) => c.name.toLowerCase().includes(term) || c.role.toLowerCase().includes(term)).slice(0, 6);
+    if (!term) return activeCollabs.slice(0, 8);
+    return activeCollabs.filter((c) => 
+      c.name.toLowerCase().includes(term) || c.role.toLowerCase().includes(term)
+    ).slice(0, 8);
   }, [formColaborador, collaborators]);
 
-  // Dynamic calculations in form
-  const parsedPrice = parseFloat(formPrecio) || 0;
-  const parsedPending = parseFloat(formMontoPendiente) || 0;
-  const parsedPaid = Math.max(0, parsedPrice - parsedPending);
-  const calculatedCommission = (parsedPrice * (formComisionPct || 0)) / 100;
-  const calculatedNet = parsedPrice - calculatedCommission;
+  // Dynamic calculations in form with exact math
+  const parsedPrice = parseAmount(formPrecio) || parseFloat(formPrecio) || 0;
+  const parsedPending = parseAmount(formMontoPendiente) || parseFloat(formMontoPendiente) || 0;
+  const parsedPaid = Math.max(0, Math.round((parsedPrice - parsedPending) * 100) / 100);
+  const calculatedCommission = Math.round(((parsedPrice * (formComisionPct || 0)) / 100) * 100) / 100;
+  const calculatedNet = Math.round((parsedPrice - calculatedCommission) * 100) / 100;
 
   // Handle Client Selection from Auto-complete
   const handleSelectClient = (client: ClientRecord) => {
-    const name = Object.values(client.data)[0] || 'Cliente';
-    const phone = client.data['Teléfono / WhatsApp'] || client.data['Teléfono'] || client.data['WhatsApp'] || '';
-    setFormCliente(String(name));
-    if (phone) setFormClientePhone(String(phone));
+    const name = getClientDisplayName(client.data);
+    const phone = getClientPhone(client.data);
+    setFormCliente(name);
+    if (phone) setFormClientePhone(phone);
     setIsClientDropdownOpen(false);
   };
 
@@ -356,14 +394,22 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    setSales([newRecord, ...sales]);
+    const updatedSales = [newRecord, ...sales];
+    setSales(updatedSales);
+    try {
+      localStorage.setItem(salesStorageKey, JSON.stringify(updatedSales));
+      window.dispatchEvent(new CustomEvent('crm-data-updated'));
+    } catch (e) {
+      console.error('Error saving sales', e);
+    }
+
     setFormCliente('');
     setFormClientePhone('');
     setFormServicio('');
     setFormPrecio('');
     setFormMontoPendiente('0');
     setFormErrors({});
-    showToast(`¡Venta registrada con éxito (${formatAmount(parsedPrice)})!`);
+    showToast(`¡Venta registrada: Pagado ${formatAmount(parsedPaid)} ${parsedPending > 0 ? `(Debe ${formatAmount(parsedPending)})` : ''}!`);
 
     confetti({
       particleCount: 35,
@@ -374,24 +420,36 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
 
   // Settle Debt Action for a sale
   const handleSettleDebtSale = (id: string) => {
-    setSales((prev) =>
-      prev.map((s) =>
-        s.id === id
-          ? {
-              ...s,
-              montoPendiente: 0,
-              montoPagado: s.precioCobrado,
-              notas: (s.notas ? s.notas + ' | ' : '') + `Saldado el ${new Date().toLocaleDateString()}`,
-            }
-          : s
-      )
+    const updated = sales.map((s) =>
+      s.id === id
+        ? {
+            ...s,
+            montoPendiente: 0,
+            montoPagado: s.precioCobrado,
+            notas: (s.notas ? s.notas + ' | ' : '') + `Saldado el ${new Date().toLocaleDateString()}`,
+          }
+        : s
     );
+    setSales(updated);
+    try {
+      localStorage.setItem(salesStorageKey, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('crm-data-updated'));
+    } catch (e) {
+      console.error('Error settling debt in storage', e);
+    }
     showToast('¡Saldo pendiente marcado como pagado exitosamente!');
   };
 
   // Delete sale
   const handleDeleteSale = (id: string) => {
-    setSales(sales.filter((s) => s.id !== id));
+    const updated = sales.filter((s) => s.id !== id);
+    setSales(updated);
+    try {
+      localStorage.setItem(salesStorageKey, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('crm-data-updated'));
+    } catch (e) {
+      console.error('Error deleting sale in storage', e);
+    }
     setDeleteConfirmId(null);
     showToast('Registro de venta eliminado.');
   };
@@ -973,16 +1031,28 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
             </div>
 
             {/* Dynamic Calculation Output Preview Card */}
-            <div className="bg-slate-900 text-white p-3 rounded-xl border border-slate-800 flex flex-col justify-center">
-              <div className="flex justify-between items-center text-[11px] mb-1">
-                <span className="text-slate-400">Comisión Especialista:</span>
+            <div className="bg-slate-900 text-white p-3.5 rounded-xl border border-slate-800 flex flex-col justify-center space-y-1.5 shadow-xs">
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-slate-400 font-medium">Cobrado Hoy (Efectivo/Pago):</span>
+                <span className="font-extrabold text-emerald-400 font-mono text-xs">
+                  {formatAmount(parsedPaid)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-slate-400 font-medium">Saldo Pendiente (Adeudado):</span>
+                <span className={`font-extrabold font-mono text-xs ${parsedPending > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>
+                  {formatAmount(parsedPending)}
+                </span>
+              </div>
+              <div className="border-t border-slate-800 pt-1 flex justify-between items-center text-[11px]">
+                <span className="text-slate-400">Comisión Especialista ({formComisionPct}%):</span>
                 <span className="font-bold text-blue-300 font-mono">
                   {formatAmount(calculatedCommission)}
                 </span>
               </div>
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-slate-400">Ganancia Neta Local:</span>
-                <span className="font-bold text-emerald-400 font-mono">
+                <span className="font-bold text-emerald-300 font-mono">
                   {formatAmount(calculatedNet)}
                 </span>
               </div>

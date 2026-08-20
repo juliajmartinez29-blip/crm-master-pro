@@ -19,6 +19,7 @@ import {
   Tag,
   AlertCircle,
   Smartphone,
+  CreditCard,
 } from 'lucide-react';
 import { GeneratedCRMSystem, WhatsAppTemplate, CRMField, BusinessFormData } from '../types';
 import { ClientManager } from './ClientManager';
@@ -40,7 +41,6 @@ interface ResultsDashboardProps {
 }
 
 type TabType = 'ficha' | 'plantillas' | 'colaboradores' | 'guia';
-type FichaSubView = 'clientes' | 'estructura';
 
 export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   crm,
@@ -49,7 +49,6 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   onOpenChatWithPrompt,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('ficha');
-  const [fichaSubView, setFichaSubView] = useState<FichaSubView>('clientes');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // WhatsApp template simulation state
@@ -190,11 +189,8 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 : 'text-slate-400 hover:text-slate-200 border-transparent'
             }`}
           >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>1. Gestor de Clientes & Ficha CRM</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-700 text-slate-300">
-              {crm.fichaCliente.fields.length} campos
-            </span>
+            <Users className="w-4 h-4" />
+            <span>1. Gestor Integral de Clientes</span>
           </button>
 
           <button
@@ -222,7 +218,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 : 'text-slate-400 hover:text-slate-200 border-transparent'
             }`}
           >
-            <Users className="w-4 h-4" />
+            <CreditCard className="w-4 h-4" />
             <span>3. Control Colaboradores & Finanzas</span>
           </button>
 
@@ -236,248 +232,26 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             }`}
           >
             <BookOpen className="w-4 h-4" />
-            <span>4. Guía Gratuita Paso a Paso</span>
+            <span>4. Guía Gratuita & Estructura CRM</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-700 text-slate-300">
+              {crm.fichaCliente.fields.length} campos
+            </span>
           </button>
         </div>
       </div>
 
       {/* Main Tab Content */}
       <div className="p-5 sm:p-7">
-        {/* ================= TAB 1: FICHA DE CLIENTE Y GESTOR ================= */}
+        {/* ================= TAB 1: GESTOR INTEGRAL DE CLIENTES ================= */}
         {activeTab === 'ficha' && (
-          <div className="space-y-6">
-            {/* Sub-view Navigation Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl w-fit">
-                <button
-                  type="button"
-                  id="subview-btn-clientes"
-                  onClick={() => setFichaSubView('clientes')}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    fichaSubView === 'clientes'
-                      ? 'bg-white text-emerald-800 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Base de Datos de Clientes</span>
-                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded-full font-bold">
-                    Activo
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  id="subview-btn-estructura"
-                  onClick={() => setFichaSubView('estructura')}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    fichaSubView === 'estructura'
-                      ? 'bg-white text-emerald-800 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-slate-600" />
-                  <span>Columnas & Definición CRM</span>
-                  <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full font-bold">
-                    {crm.fichaCliente.fields.length} campos
-                  </span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  id="btn-download-csv-ficha"
-                  onClick={handleDownloadFichaCSV}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                  title="Descargar plantilla de columnas para Google Sheets"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Descargar CSV Columnas</span>
-                </button>
-                <button
-                  id="btn-copy-ficha"
-                  onClick={() => {
-                    const text = crm.fichaCliente.fields
-                      .map((f) => `${f.name} (${f.type}) - ${f.purpose} [Ej: ${f.example}]`)
-                      .join('\n');
-                    handleCopy('ficha-fields', text);
-                  }}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                >
-                  {copiedId === 'ficha-fields' ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>¡Copiado!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copiar Estructura</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Note banner required by instructions */}
-            <div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-xl flex items-start gap-3 text-amber-900 shadow-xs">
-              <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div className="text-xs flex-1">
-                <span className="font-bold">Nota editable: </span>
-                <span>{crm.fichaCliente.note}</span>
-                <div className="mt-2 flex gap-2 flex-wrap items-center">
-                  <button
-                    type="button"
-                    id="btn-quick-add-field"
-                    onClick={() =>
-                      onOpenChatWithPrompt('Agrega un nuevo campo de "Alergias a productos y sensibilidad de piel" a la ficha de cliente')
-                    }
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100/90 hover:bg-amber-200 px-2.5 py-1 rounded-lg border border-amber-300 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                  >
-                    <span>+ Agregar campo en el chat</span>
-                  </button>
-                  <button
-                    type="button"
-                    id="btn-quick-simplify-fields"
-                    onClick={() =>
-                      onOpenChatWithPrompt('Simplifica la tabla quitando campos no esenciales y dejando solo los obligatorios')
-                    }
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100/90 hover:bg-amber-200 px-2.5 py-1 rounded-lg border border-amber-300 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                  >
-                    <span>- Simplificar campos</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* SUB-VIEW 1: Real Client Manager */}
-            {fichaSubView === 'clientes' && (
-              <ClientManager
-                businessId={businessId}
-                fields={crm.fichaCliente.fields}
-                businessName={crm.businessSummary.name}
-                currencySymbol={crm.businessSummary.currency === 'HNL' ? 'L' : '$'}
-                sampleData={crm.fichaCliente.sampleClientData}
-                onOpenChatWithPrompt={onOpenChatWithPrompt}
-              />
-            )}
-
-            {/* SUB-VIEW 2: Schema Column Definitions and Table */}
-            {fichaSubView === 'estructura' && (
-              <div className="space-y-6">
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                    <span>Catálogo de Columnas y Tipos de Datos</span>
-                  </h4>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Estructura técnica optimizada para Google Sheets, Excel o Notion.
-                  </p>
-                </div>
-
-                {/* Structured Table */}
-                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs text-slate-700">
-                      <thead className="bg-slate-50 text-slate-900 uppercase font-semibold text-[11px] tracking-wider border-b border-slate-200">
-                        <tr>
-                          <th className="py-3 px-4">#</th>
-                          <th className="py-3 px-4">Nombre del Campo</th>
-                          <th className="py-3 px-4">Categoría</th>
-                          <th className="py-3 px-4">Tipo de Dato</th>
-                          <th className="py-3 px-4">Ejemplo Real</th>
-                          <th className="py-3 px-4">Para qué sirve / Importancia</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-medium">
-                        {crm.fichaCliente.fields.map((field, idx) => (
-                          <tr
-                            key={idx}
-                            className={`hover:bg-slate-50/80 transition-colors ${
-                              field.category.includes('Especialidad') ? 'bg-emerald-50/30' : ''
-                            }`}
-                          >
-                            <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">
-                              {idx + 1}
-                            </td>
-                            <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-1.5">
-                              <span>{field.name}</span>
-                              {field.isRequired && (
-                                <span className="text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded font-semibold">
-                                  Req
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span
-                                className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
-                                  field.category === 'Datos Generales'
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : field.category.includes('Especialidad')
-                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
-                                    : field.category.includes('Preferencias')
-                                    ? 'bg-purple-100 text-purple-800'
-                                    : 'bg-amber-100 text-amber-900'
-                                }`}
-                              >
-                                {field.category}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                                {field.type}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-slate-600 italic">
-                              "{field.example}"
-                            </td>
-                            <td className="py-3 px-4 text-slate-600">
-                              {field.purpose}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Interactive Sample Client Profile Simulator */}
-                <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2">
-                      <Eye className="w-4 h-4 text-emerald-600" />
-                      <h4 className="text-sm font-bold text-slate-900">
-                        Simulador: Vista previa de una Ficha de Cliente Real
-                      </h4>
-                    </div>
-                    <span className="text-[11px] text-slate-500">
-                      Así se ve el perfil registrado en tu base de datos
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
-                    {crm.fichaCliente.fields.map((f, i) => (
-                      <div key={i} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 transition-all hover:border-emerald-200">
-                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <span className="text-[10px] uppercase font-bold text-slate-400 truncate">
-                            {f.name}
-                          </span>
-                          {f.isRequired && (
-                            <span className="text-[9px] font-bold text-rose-600 bg-rose-50 px-1 py-0.2 rounded">
-                              Obligatorio
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-xs font-semibold text-slate-800 break-words block">
-                          {crm.fichaCliente.sampleClientData?.[f.name] || f.example}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <ClientManager
+            businessId={businessId}
+            fields={crm.fichaCliente.fields}
+            businessName={crm.businessSummary.name}
+            currencySymbol={crm.businessSummary.currency === 'HNL' ? 'L' : '$'}
+            sampleData={crm.fichaCliente.sampleClientData}
+            onOpenChatWithPrompt={onOpenChatWithPrompt}
+          />
         )}
 
         {/* ================= TAB 2: PLANTILLAS WHATSAPP ================= */}
@@ -929,6 +703,193 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                     </a>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* ================= SECCIÓN TÉCNICA: COLUMNAS & DEFINICIÓN CRM ================= */}
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700">
+                      <FileSpreadsheet className="w-4 h-4" />
+                    </div>
+                    <h4 className="text-base font-bold text-slate-900">
+                      Columnas & Definición Técnica del CRM
+                    </h4>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Estructura técnica de base de datos categorizada para configurar Google Sheets, Excel o Notion.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    id="btn-download-csv-ficha-tab4"
+                    onClick={handleDownloadFichaCSV}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                    title="Descargar plantilla de columnas para Google Sheets"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Descargar CSV Columnas</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-copy-ficha-tab4"
+                    onClick={() => {
+                      const text = crm.fichaCliente.fields
+                        .map((f) => `${f.name} (${f.type}) - ${f.purpose} [Ej: ${f.example}]`)
+                        .join('\n');
+                      handleCopy('ficha-fields-tab4', text);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                  >
+                    {copiedId === 'ficha-fields-tab4' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>¡Copiado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copiar Estructura</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Note banner with quick assistant chat prompts */}
+              <div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-xl flex items-start gap-3 text-amber-900 shadow-xs">
+                <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs flex-1">
+                  <span className="font-bold">Nota editable: </span>
+                  <span>{crm.fichaCliente.note}</span>
+                  <div className="mt-2 flex gap-2 flex-wrap items-center">
+                    <button
+                      type="button"
+                      id="btn-tab4-quick-add-field"
+                      onClick={() =>
+                        onOpenChatWithPrompt('Agrega un nuevo campo de "Alergias a productos y sensibilidad de piel" a la ficha de cliente')
+                      }
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100/90 hover:bg-amber-200 px-2.5 py-1 rounded-lg border border-amber-300 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                    >
+                      <span>+ Agregar campo en el chat</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-tab4-quick-simplify-fields"
+                      onClick={() =>
+                        onOpenChatWithPrompt('Simplifica la tabla quitando campos no esenciales y dejando solo los obligatorios')
+                      }
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100/90 hover:bg-amber-200 px-2.5 py-1 rounded-lg border border-amber-300 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                    >
+                      <span>- Simplificar campos</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Structured Technical Table */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-50 text-slate-900 uppercase font-semibold text-[11px] tracking-wider border-b border-slate-200">
+                      <tr>
+                        <th className="py-3 px-4">#</th>
+                        <th className="py-3 px-4">Nombre del Campo</th>
+                        <th className="py-3 px-4">Categoría</th>
+                        <th className="py-3 px-4">Tipo de Dato</th>
+                        <th className="py-3 px-4">Ejemplo Real</th>
+                        <th className="py-3 px-4">Para qué sirve / Importancia</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {crm.fichaCliente.fields.map((field, idx) => (
+                        <tr
+                          key={idx}
+                          className={`hover:bg-slate-50/80 transition-colors ${
+                            field.category.includes('Especialidad') ? 'bg-emerald-50/30' : ''
+                          }`}
+                        >
+                          <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">
+                            {idx + 1}
+                          </td>
+                          <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-1.5">
+                            <span>{field.name}</span>
+                            {field.isRequired && (
+                              <span className="text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded font-semibold">
+                                Req
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                                field.category === 'Datos Generales'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : field.category.includes('Especialidad')
+                                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                                  : field.category.includes('Preferencias')
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-amber-100 text-amber-900'
+                              }`}
+                            >
+                              {field.category}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                              {field.type}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 italic">
+                            "{field.example}"
+                          </td>
+                          <td className="py-3 px-4 text-slate-600">
+                            {field.purpose}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Interactive Sample Profile Simulator */}
+              <div className="bg-slate-50 rounded-xl p-4 sm:p-5 border border-slate-200">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-emerald-600" />
+                    <h4 className="text-sm font-bold text-slate-900">
+                      Simulador: Vista previa de una Ficha de Cliente Real
+                    </h4>
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    Así se ve el perfil registrado en tu base de datos
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
+                  {crm.fichaCliente.fields.map((f, i) => (
+                    <div key={i} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 transition-all hover:border-emerald-200">
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 truncate">
+                          {f.name}
+                        </span>
+                        {f.isRequired && (
+                          <span className="text-[9px] font-bold text-rose-600 bg-rose-50 px-1 py-0.2 rounded">
+                            Obligatorio
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs font-semibold text-slate-800 break-words block">
+                        {crm.fichaCliente.sampleClientData?.[f.name] || f.example}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
