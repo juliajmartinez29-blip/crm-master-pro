@@ -48,6 +48,7 @@ export const InteractiveChat: React.FC<InteractiveChatProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -60,9 +61,16 @@ export const InteractiveChat: React.FC<InteractiveChatProps> = ({
   useEffect(() => {
     if (externalPrompt && externalPrompt.trim().length > 0) {
       setInputMessage(externalPrompt);
+      if (isMinimized) {
+        setIsMinimized(false);
+      }
+      setTimeout(() => {
+        inputRef.current?.focus();
+        inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
       if (onClearExternalPrompt) onClearExternalPrompt();
     }
-  }, [externalPrompt, onClearExternalPrompt]);
+  }, [externalPrompt, isMinimized, onClearExternalPrompt]);
 
   const handleSendMessage = async (customText?: string) => {
     const textToSend = (customText || inputMessage).trim();
@@ -264,6 +272,7 @@ export const InteractiveChat: React.FC<InteractiveChatProps> = ({
             <input
               type="text"
               id="input-chat-message"
+              ref={inputRef}
               placeholder="Ej. 'Agrega un campo de tipo de piel grasa/seca' o 'Cambia el mensaje de WhatsApp'..."
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}

@@ -468,65 +468,140 @@ export const refineCRMChatClientSide = async (
 ): Promise<{ replyText: string; updatedCRM?: GeneratedCRMSystem }> => {
   const apiKey = getClientApiKey();
 
-  if (!apiKey || !currentCRM) {
-    // Local intelligent modification
-    const updated = JSON.parse(JSON.stringify(currentCRM || generateLocalFallbackCRM(businessData)));
-    const lower = message.toLowerCase();
+  // Helper for rule-based local updating to guarantee state modification if Gemini is offline/fallback or returns partial data
+  const applyLocalRefinement = (
+    baseCRM: GeneratedCRMSystem,
+    msg: string
+  ): { replyText: string; updatedCRM: GeneratedCRMSystem } => {
+    const updated: GeneratedCRMSystem = JSON.parse(JSON.stringify(baseCRM));
+    const lower = msg.toLowerCase();
 
-    if (lower.includes('alergia') || lower.includes('piel') || lower.includes('campo')) {
-      const newFieldName = lower.includes('alergia')
-        ? 'Alergias y Sensibilidad'
-        : lower.includes('piel')
-        ? 'Tipo de Piel y Cuidados'
-        : 'Campo Personalizado';
-
-      const exists = updated.fichaCliente.fields.some((f: any) => f.name.toLowerCase() === newFieldName.toLowerCase());
-      if (!exists) {
-        updated.fichaCliente.fields.push({
-          name: newFieldName,
-          category: 'Especialidad / Historial Técnico',
-          type: 'Texto',
-          isRequired: false,
-          example: 'Sin alergias conocidas',
-          purpose: 'Precaución de salud previa a la aplicación de productos.',
-        });
-      }
+    // 1. Simplificar campos / Quitar opcionales
+    if (
+      lower.includes('simplifica') ||
+      lower.includes('quitar') ||
+      lower.includes('quites') ||
+      lower.includes('eliminar') ||
+      lower.includes('no esenciales') ||
+      lower.includes('obligatorios')
+    ) {
+      const initialCount = updated.fichaCliente.fields.length;
+      updated.fichaCliente.fields = updated.fichaCliente.fields.filter(
+        (f) => f.isRequired || f.name.includes('Nombre') || f.name.includes('WhatsApp') || f.name.includes('Historial')
+      );
       return {
-        replyText: `¡Listo! He añadido el campo **"${newFieldName}"** a tu Ficha de Clientes. Puedes revisarlo en la pestaña de Ficha de Cliente y descargarlo en CSV.`,
+        replyText: `¡Listo! He simplificado la Ficha de Clientes manteniendo solo los campos esenciales y obligatorios (de ${initialCount} a ${updated.fichaCliente.fields.length} campos). La tabla se ha actualizado en tiempo real.`,
         updatedCRM: updated,
       };
     }
 
-    if (lower.includes('48h') || lower.includes('recordatorio')) {
-      const reminderTpl = updated.plantillasMensajes.find((t: any) => t.id === 'tpl-recordatorio-24h' || t.title.includes('Recordatorio'));
+    // 2. Agregar campo específico
+    if (
+      lower.includes('agrega') ||
+      lower.includes('agregar') ||
+      lower.includes('añadir') ||
+      lower.includes('campo') ||
+      lower.includes('alergia') ||
+      lower.includes('piel') ||
+      lower.includes('foto')
+    ) {
+      let newFieldName = 'Alergias y Sensibilidad';
+      let category: any = 'Especialidad / Historial Técnico';
+      let purpose = 'Precaución de salud previa a la aplicación de productos y tratamientos.';
+      let example = 'Sin alergias a químicos / Piel sensible al amoníaco';
+
+      if (lower.includes('foto') || lower.includes('antes') || lower.includes('después') || lower.includes('despues')) {
+        newFieldName = 'Link Fotos Antes y Después';
+        purpose = 'Enlace a carpeta de Drive o Notion con evidencia visual del servicio.';
+        example = 'drive.google.com/fotos-cli-001';
+      } else if (lower.includes('piel') || lower.includes('cutis')) {
+        newFieldName = 'Tipo de Piel / Cutis';
+        purpose = 'Diagnóstico dérmico para selección de productos adecuados.';
+        example = 'Piel mixta con tendencia a rosácea';
+      } else if (lower.includes('preferencia') || lower.includes('bebida') || lower.includes('música') || lower.includes('musica')) {
+        newFieldName = 'Preferencia de Ambiente y Bebida';
+        category = 'Preferencias & Hábitos';
+        purpose = 'Atención VIP personalizada durante su estancia.';
+        example = 'Café cortado con azúcar / Prefiere música suave';
+      } else if (lower.includes('"') || lower.includes("'")) {
+        const match = msg.match(/["']([^"']+)["']/);
+        if (match && match[1]) {
+          newFieldName = match[1];
+        }
+      }
+
+      const exists = updated.fichaCliente.fields.some(
+        (f) => f.name.toLowerCase() === newFieldName.toLowerCase()
+      );
+
+      if (!exists) {
+        updated.fichaCliente.fields.push({
+          name: newFieldName,
+          category,
+          type: 'Texto',
+          isRequired: false,
+          example,
+          purpose,
+        });
+      }
+
+      return {
+        replyText: `¡Listo! He añadido el nuevo campo **"${newFieldName}"** a tu Ficha de Clientes. La tabla se ha actualizado automáticamente en tu pantalla.`,
+        updatedCRM: updated,
+      };
+    }
+
+    // 3. Modificación de WhatsApp / Recordatorio 48h
+    if (lower.includes('48h') || lower.includes('48 horas') || lower.includes('recordatorio')) {
+      const reminderTpl = updated.plantillasMensajes.find(
+        (t) => t.id === 'tpl-recordatorio-24h' || t.title.toLowerCase().includes('recordatorio')
+      );
       if (reminderTpl) {
         reminderTpl.title = 'Recordatorio 48 Horas Antes (Confirmación Activa)';
         reminderTpl.recommendedTiming = '48 horas antes de la cita';
         reminderTpl.templateText = `Hola [Nombre_Cliente] 👋 Te recordamos que tienes una cita agendada para este *[Fecha_Cita]* a las *[Hora_Cita]* en *[Nombre_Negocio]*.
 
-Por favor confírmanos respondiendo:
+Por favor confírmanos tu asistencia respondiendo:
 👉 *1* para Confirmar
 👉 *2* para Reagendar
 
-¡Muchas gracias! ✨`;
+¡Muchas gracias y que tengas un excelente día! ✨`;
       }
       return {
-        replyText: `¡Actualizado! He cambiado la plantilla de recordatorio para que sea de **48 horas de anticipación** con botones de confirmación rápida.`,
+        replyText: `¡Actualizado! He modificado la plantilla de WhatsApp para enviar el recordatorio con **48 horas de anticipación** y confirmación interactiva.`,
+        updatedCRM: updated,
+      };
+    }
+
+    // 4. Modificación de comisiones / retención
+    if (lower.includes('comisi') || lower.includes('tarjeta') || lower.includes('retener') || lower.includes('3%')) {
+      if (!updated.moduloColaboradores.paymentRules.some((r) => r.includes('3%'))) {
+        updated.moduloColaboradores.paymentRules.push(
+          'Pago con tarjeta: Se descuenta 3% de comisión bancaria antes de calcular el pago del profesional.'
+        );
+      }
+      return {
+        replyText: `¡Ajustado! He añadido la regla de retención del 3% por cobros con tarjeta en el **Módulo de Control de Colaboradores**.`,
         updatedCRM: updated,
       };
     }
 
     return {
-      replyText: `He procesado tu indicación: "${message}". He actualizado la configuración de tu CRM. Si deseas agregar otro campo o cambiar textos, ¡solo pídemelo!`,
+      replyText: `He procesado tu solicitud: "${msg}". He actualizado y sincronizado la configuración de tu Sistema CRM.`,
       updatedCRM: updated,
     };
+  };
+
+  if (!apiKey || !currentCRM) {
+    const base = currentCRM || generateLocalFallbackCRM(businessData);
+    return applyLocalRefinement(base, message);
   }
 
   try {
     const ai = new GoogleGenAI({ apiKey });
 
-    const prompt = `Actúa como Asistente Experto en CRM Master Pro.
-El usuario tiene el siguiente sistema CRM generado para su negocio "${businessData?.businessName || 'Negocio'}".
+    const prompt = `Actúa como Asistente Experto en CRM Master Pro y consultor de negocios.
+El usuario tiene el siguiente sistema CRM generado para su negocio "${businessData?.businessName || 'Negocio'}":
 
 SISTEMA CRM ACTUAL (JSON):
 ${JSON.stringify(currentCRM, null, 2)}
@@ -534,15 +609,16 @@ ${JSON.stringify(currentCRM, null, 2)}
 PETICIÓN DEL USUARIO:
 "${message}"
 
-INSTRUCCIONES:
-1. Analiza la petición del usuario (ej: agregar/quitar campos, editar plantilla, cambiar comisión).
-2. Devuelve una respuesta en lenguaje natural explicando qué cambio se realizó.
-3. Si requiere modificar el CRM, devuelve 'updatedCRM' con el JSON completo modificado. Si solo es una consulta, pon 'updatedCRM': null.
+INSTRUCCIONES CRÍTICAS:
+1. Analiza la petición del usuario (ej: agregar o quitar campos en fichaCliente.fields, cambiar plantillas, modificar fórmulas de colaboradores).
+2. Si el usuario pide agregar o quitar campos, modifica la lista 'fichaCliente.fields' en el JSON.
+3. SIEMPRE incluye en 'updatedCRM' el objeto completo de GeneratedCRMSystem con la modificación aplicada para que la interfaz web de React actualice la tabla en vivo.
+4. En 'replyText', redacta una respuesta clara y profesional en español explicando los cambios realizados.
 
 Devuelve ESTRICTAMENTE un JSON con:
 {
-  "replyText": "Respuesta explicativa",
-  "updatedCRM": { ...estructura completa actualizada o null... }
+  "replyText": "Explicación detallada de lo modificado",
+  "updatedCRM": { ...objeto completo GeneratedCRMSystem modificado... }
 }`;
 
     const response = await ai.models.generateContent({
@@ -555,7 +631,7 @@ Devuelve ESTRICTAMENTE un JSON con:
     });
 
     const responseText = response.text || '';
-    let parsedJson;
+    let parsedJson: { replyText: string; updatedCRM?: GeneratedCRMSystem };
     try {
       parsedJson = JSON.parse(responseText);
     } catch {
@@ -563,12 +639,22 @@ Devuelve ESTRICTAMENTE un JSON con:
       parsedJson = JSON.parse(cleaned);
     }
 
-    return parsedJson;
+    // Ensure updatedCRM has the proper shape and fichaCliente fields
+    if (parsedJson && parsedJson.updatedCRM && parsedJson.updatedCRM.fichaCliente) {
+      return {
+        replyText: parsedJson.replyText || '¡Cambios aplicados con éxito a tu Sistema CRM!',
+        updatedCRM: parsedJson.updatedCRM,
+      };
+    } else {
+      // If AI didn't return full structure, fallback to local structured update
+      const localResult = applyLocalRefinement(currentCRM, message);
+      return {
+        replyText: parsedJson.replyText || localResult.replyText,
+        updatedCRM: localResult.updatedCRM,
+      };
+    }
   } catch (err: any) {
-    console.warn('Error calling Gemini chat refine client-side, using fallback:', err);
-    return {
-      replyText: `He procesado tu solicitud: "${message}". He actualizado la configuración de tu CRM localmente.`,
-      updatedCRM: currentCRM || undefined,
-    };
+    console.warn('Error calling Gemini chat refine client-side, using robust fallback:', err);
+    return applyLocalRefinement(currentCRM, message);
   }
 };

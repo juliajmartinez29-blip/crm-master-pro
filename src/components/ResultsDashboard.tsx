@@ -282,28 +282,31 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             </div>
 
             {/* Note banner required by instructions */}
-            <div className="p-3.5 bg-amber-50/90 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-900">
+            <div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-xl flex items-start gap-3 text-amber-900 shadow-xs">
               <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div className="text-xs">
+              <div className="text-xs flex-1">
                 <span className="font-bold">Nota editable: </span>
                 <span>{crm.fichaCliente.note}</span>
-                <div className="mt-1.5 flex gap-2 flex-wrap">
+                <div className="mt-2 flex gap-2 flex-wrap items-center">
                   <button
+                    type="button"
+                    id="btn-quick-add-field"
                     onClick={() =>
-                      onOpenChatWithPrompt('Por favor agrega un campo de "Alergias a productos químicos" a la ficha de cliente')
+                      onOpenChatWithPrompt('Agrega un nuevo campo de "Alergias a productos y sensibilidad de piel" a la ficha de cliente')
                     }
-                    className="text-[11px] font-semibold text-amber-800 underline hover:text-amber-950"
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100/90 hover:bg-amber-200 px-2.5 py-1 rounded-lg border border-amber-300 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
                   >
-                    + Agregar campo en el chat
+                    <span>+ Agregar campo en el chat</span>
                   </button>
-                  <span className="text-amber-400">•</span>
                   <button
+                    type="button"
+                    id="btn-quick-simplify-fields"
                     onClick={() =>
-                      onOpenChatWithPrompt('Por favor quita los campos que no sean estrictamente obligatorios')
+                      onOpenChatWithPrompt('Simplifica la tabla quitando campos no esenciales y dejando solo los obligatorios')
                     }
-                    className="text-[11px] font-semibold text-amber-800 underline hover:text-amber-950"
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100/90 hover:bg-amber-200 px-2.5 py-1 rounded-lg border border-amber-300 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
                   >
-                    - Simplificar campos
+                    <span>- Simplificar campos</span>
                   </button>
                 </div>
               </div>
