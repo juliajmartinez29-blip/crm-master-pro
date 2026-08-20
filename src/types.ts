@@ -125,13 +125,26 @@ export interface SaleRecord {
   fecha: string;
   colaborador: string;
   cliente: string;
+  clientePhone?: string;
   servicio: string;
   precioCobrado: number;
+  montoPagado?: number;
+  montoPendiente: number;
   metodoPago: string;
   comisionPorcentaje: number;
   comisionCalculada: number;
   gananciaNeta: number;
   notas?: string;
+  createdAt: string;
+}
+
+export interface CollaboratorItem {
+  id: string;
+  name: string;
+  role: string;
+  phone?: string;
+  commissionDefault: number;
+  active: boolean;
   createdAt: string;
 }
 

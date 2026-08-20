@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   DollarSign,
   PlusCircle,
@@ -16,9 +16,17 @@ import {
   Calculator,
   UserCheck,
   Sparkles,
+  UserPlus,
+  MessageCircle,
+  Clock,
+  ChevronDown,
+  CheckCircle2,
+  Receipt,
 } from 'lucide-react';
-import { SaleRecord, EmployeeModule } from '../types';
+import { SaleRecord, EmployeeModule, CollaboratorItem, ClientRecord } from '../types';
 import { downloadCSV } from '../utils/exportUtils';
+import { formatAmount, parseAmount } from '../utils/formatUtils';
+import { CollaboratorsModal } from './CollaboratorsModal';
 import confetti from 'canvas-confetti';
 
 interface SalesFinanceManagerProps {
@@ -42,24 +50,100 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
   servicesList = '',
   collaboratorsCount = 2,
 }) => {
-  const storageKey = useMemo(
+  const salesStorageKey = useMemo(
     () => `crm_sales_db_${businessId || businessName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
     [businessId, businessName]
   );
 
-  // Suggested collaborator names based on sample closing rows or defaults
-  const suggestedCollaborators = useMemo(() => {
-    const names = new Set<string>();
-    if (moduloColaboradores?.sampleClosingRows) {
-      moduloColaboradores.sampleClosingRows.forEach((r) => names.add(r.colaborador));
+  const collabsStorageKey = useMemo(
+    () => `crm_collaborators_db_${businessId || businessName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+    [businessId, businessName]
+  );
+
+  const clientsStorageKey = useMemo(
+    () => `crm_clients_db_${businessId || businessName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+    [businessId, businessName]
+  );
+
+  // 1. Registered Clients for Predictive Auto-complete
+  const [registeredClients, setRegisteredClients] = useState<ClientRecord[]>([]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(clientsStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setRegisteredClients(parsed);
+          return;
+        }
+      }
+      setRegisteredClients([]);
+    } catch (e) {
+      console.warn('Error reading clients for autocomplete', e);
     }
-    if (names.size === 0) {
-      names.add('Carlos M.');
-      names.add('Laura G.');
-      names.add('Andrés P.');
+  }, [clientsStorageKey]);
+
+  // 2. Collaborators State & Management
+  const [collaborators, setCollaborators] = useState<CollaboratorItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(collabsStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading collaborators', e);
     }
-    return Array.from(names);
-  }, [moduloColaboradores]);
+
+    // Seed default collaborators
+    const seeded: CollaboratorItem[] = [];
+    const sampleNames = moduloColaboradores?.sampleClosingRows?.map((r) => r.colaborador) || ['Carlos M.', 'Laura G.', 'Andrés P.'];
+    const uniqueNames = Array.from(new Set(sampleNames));
+
+    uniqueNames.forEach((name, idx) => {
+      seeded.push({
+        id: `collab-init-${idx + 1}`,
+        name: name,
+        role: idx === 0 ? 'Especialista Principal' : 'Especialista',
+        commissionDefault: commissionDefault || 40,
+        active: true,
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    return seeded;
+  });
+
+  // Sync collaborators when business changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(collabsStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setCollaborators(parsed);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Error syncing collaborators', e);
+    }
+  }, [collabsStorageKey]);
+
+  // Save collaborators
+  const handleSaveCollaborators = (updated: CollaboratorItem[]) => {
+    setCollaborators(updated);
+    try {
+      localStorage.setItem(collabsStorageKey, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Error saving collaborators', e);
+    }
+  };
+
+  const [isCollabsModalOpen, setIsCollabsModalOpen] = useState(false);
 
   // Suggested services
   const suggestedServices = useMemo(() => {
@@ -70,10 +154,10 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
       .filter((s) => s.length > 0);
   }, [servicesList]);
 
-  // Load sales from localStorage or seed initial data
+  // 3. Sales State
   const [sales, setSales] = useState<SaleRecord[]>(() => {
     try {
-      const saved = localStorage.getItem(storageKey);
+      const saved = localStorage.getItem(salesStorageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -90,7 +174,7 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
 
     const defaultPrices = [450, 850, 300];
     const defaultServices = suggestedServices.length > 0 ? suggestedServices : ['Corte y Estilo VIP', 'Tratamiento Restaurador', 'Perfilado y Barba'];
-    const defaultCollabs = suggestedCollaborators.length > 0 ? suggestedCollaborators : ['Carlos M.', 'Laura G.', 'Andrés P.'];
+    const defaultCollabNames = collaborators.map((c) => c.name);
     const defaultClients = ['Mariana Soto', 'Carlos Mendoza', 'Dra. Sofía Valladares'];
     const defaultPaymentMethods = ['Efectivo', 'Tarjeta de Crédito / Débito', 'Transferencia'];
 
@@ -99,14 +183,20 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
       const commPct = commissionDefault || 40;
       const commAmount = (price * commPct) / 100;
       const netGain = price - commAmount;
+      // Let the 3rd sample have a pending balance of 100.00 to showcase debtor management
+      const pending = i === 2 ? 100 : 0;
+      const paid = price - pending;
 
       initial.push({
         id: `sale-${i + 1}-${Date.now().toString(36)}`,
         fecha: today,
-        colaborador: defaultCollabs[i % defaultCollabs.length] || 'Especialista 1',
+        colaborador: defaultCollabNames[i % defaultCollabNames.length] || 'Carlos M.',
         cliente: defaultClients[i % defaultClients.length],
+        clientePhone: '+504 9988-7766',
         servicio: defaultServices[i % defaultServices.length] || 'Servicio de Atención',
         precioCobrado: price,
+        montoPagado: paid,
+        montoPendiente: pending,
         metodoPago: defaultPaymentMethods[i % defaultPaymentMethods.length],
         comisionPorcentaje: commPct,
         comisionCalculada: commAmount,
@@ -118,10 +208,10 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
     return initial;
   });
 
-  // Reload sales when businessId/storageKey changes
+  // Reload sales when businessId/salesStorageKey changes
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(storageKey);
+      const saved = localStorage.getItem(salesStorageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
@@ -133,32 +223,42 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
     } catch (e) {
       console.warn('Error syncing sales on business change', e);
     }
-  }, [storageKey]);
+  }, [salesStorageKey]);
 
   // Save to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(sales));
+      localStorage.setItem(salesStorageKey, JSON.stringify(sales));
     } catch (e) {
       console.error('Error saving sales to localStorage', e);
     }
-  }, [sales, storageKey]);
+  }, [sales, salesStorageKey]);
 
   // Form State
   const [formFecha, setFormFecha] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [formColaborador, setFormColaborador] = useState<string>('');
   const [formCliente, setFormCliente] = useState<string>('');
+  const [formClientePhone, setFormClientePhone] = useState<string>('');
   const [formServicio, setFormServicio] = useState<string>('');
   const [formPrecio, setFormPrecio] = useState<string>('');
+  const [formMontoPendiente, setFormMontoPendiente] = useState<string>('0');
   const [formMetodoPago, setFormMetodoPago] = useState<string>('Efectivo');
   const [formComisionPct, setFormComisionPct] = useState<number>(commissionDefault || 40);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
+  // Predictive Auto-complete states
+  const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+  const [isCollabDropdownOpen, setIsCollabDropdownOpen] = useState(false);
+
+  const clientDropdownRef = useRef<HTMLDivElement>(null);
+  const collabDropdownRef = useRef<HTMLDivElement>(null);
+
   // Filter State
   const [filterColaborador, setFilterColaborador] = useState<string>('all');
   const [filterFecha, setFilterFecha] = useState<string>('');
+  const [filterDebtorOnly, setFilterDebtorOnly] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
 
   const showToast = (msg: string) => {
@@ -166,10 +266,62 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
     setTimeout(() => setSuccessToast(null), 3000);
   };
 
-  // Calculations for dynamic preview in form
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(event.target as Node)) {
+        setIsClientDropdownOpen(false);
+      }
+      if (collabDropdownRef.current && !collabDropdownRef.current.contains(event.target as Node)) {
+        setIsCollabDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filtered Client Predictive Options
+  const filteredClientSuggestions = useMemo(() => {
+    const term = formCliente.trim().toLowerCase();
+    if (!term) return [];
+    return registeredClients.filter((c) => {
+      const name = Object.values(c.data).join(' ').toLowerCase();
+      return name.includes(term);
+    }).slice(0, 6);
+  }, [formCliente, registeredClients]);
+
+  // Filtered Collaborators Predictive Options
+  const filteredCollabSuggestions = useMemo(() => {
+    const term = formColaborador.trim().toLowerCase();
+    const activeCollabs = collaborators.filter((c) => c.active);
+    if (!term) return activeCollabs.slice(0, 6);
+    return activeCollabs.filter((c) => c.name.toLowerCase().includes(term) || c.role.toLowerCase().includes(term)).slice(0, 6);
+  }, [formColaborador, collaborators]);
+
+  // Dynamic calculations in form
   const parsedPrice = parseFloat(formPrecio) || 0;
+  const parsedPending = parseFloat(formMontoPendiente) || 0;
+  const parsedPaid = Math.max(0, parsedPrice - parsedPending);
   const calculatedCommission = (parsedPrice * (formComisionPct || 0)) / 100;
   const calculatedNet = parsedPrice - calculatedCommission;
+
+  // Handle Client Selection from Auto-complete
+  const handleSelectClient = (client: ClientRecord) => {
+    const name = Object.values(client.data)[0] || 'Cliente';
+    const phone = client.data['Teléfono / WhatsApp'] || client.data['Teléfono'] || client.data['WhatsApp'] || '';
+    setFormCliente(String(name));
+    if (phone) setFormClientePhone(String(phone));
+    setIsClientDropdownOpen(false);
+  };
+
+  // Handle Collaborator Selection from Auto-complete
+  const handleSelectCollaborator = (collab: CollaboratorItem) => {
+    setFormColaborador(collab.name);
+    if (collab.commissionDefault !== undefined) {
+      setFormComisionPct(collab.commissionDefault);
+    }
+    setIsCollabDropdownOpen(false);
+  };
 
   // Handle submit new sale record
   const handleAddSale = (e: React.FormEvent) => {
@@ -180,6 +332,7 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
     if (!formCliente.trim()) errors['cliente'] = 'Ingresa el nombre del cliente';
     if (!formServicio.trim()) errors['servicio'] = 'Ingresa el servicio realizado';
     if (!formPrecio || parsedPrice <= 0) errors['precio'] = 'Ingresa un precio válido mayor a 0';
+    if (parsedPending > parsedPrice) errors['pendiente'] = 'El saldo pendiente no puede ser mayor al precio del servicio';
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -191,8 +344,11 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
       fecha: formFecha,
       colaborador: formColaborador.trim(),
       cliente: formCliente.trim(),
+      clientePhone: formClientePhone.trim() || undefined,
       servicio: formServicio.trim(),
       precioCobrado: parsedPrice,
+      montoPagado: parsedPaid,
+      montoPendiente: parsedPending,
       metodoPago: formMetodoPago,
       comisionPorcentaje: formComisionPct,
       comisionCalculada: calculatedCommission,
@@ -202,16 +358,35 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
 
     setSales([newRecord, ...sales]);
     setFormCliente('');
+    setFormClientePhone('');
     setFormServicio('');
     setFormPrecio('');
+    setFormMontoPendiente('0');
     setFormErrors({});
-    showToast(`¡Venta registrada con éxito (${currencySymbol}${parsedPrice.toLocaleString()})!`);
+    showToast(`¡Venta registrada con éxito (${formatAmount(parsedPrice)})!`);
 
     confetti({
       particleCount: 35,
       spread: 50,
       origin: { y: 0.7 },
     });
+  };
+
+  // Settle Debt Action for a sale
+  const handleSettleDebtSale = (id: string) => {
+    setSales((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              montoPendiente: 0,
+              montoPagado: s.precioCobrado,
+              notas: (s.notas ? s.notas + ' | ' : '') + `Saldado el ${new Date().toLocaleDateString()}`,
+            }
+          : s
+      )
+    );
+    showToast('¡Saldo pendiente marcado como pagado exitosamente!');
   };
 
   // Delete sale
@@ -221,13 +396,16 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
     showToast('Registro de venta eliminado.');
   };
 
-  // Filtered sales
+  // Filtered sales list
   const filteredSales = useMemo(() => {
     return sales.filter((s) => {
       if (filterColaborador !== 'all' && s.colaborador.toLowerCase() !== filterColaborador.toLowerCase()) {
         return false;
       }
       if (filterFecha && s.fecha !== filterFecha) {
+        return false;
+      }
+      if (filterDebtorOnly && (s.montoPendiente || 0) <= 0) {
         return false;
       }
       if (searchTerm.trim()) {
@@ -237,24 +415,36 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
       }
       return true;
     });
-  }, [sales, filterColaborador, filterFecha, searchTerm]);
+  }, [sales, filterColaborador, filterFecha, filterDebtorOnly, searchTerm]);
+
+  // Outstanding Debtors List (Sales with pending balance > 0)
+  const activeDebtors = useMemo(() => {
+    return sales.filter((s) => (s.montoPendiente || 0) > 0);
+  }, [sales]);
+
+  const totalPendingDebtAll = useMemo(() => {
+    return activeDebtors.reduce((acc, curr) => acc + (curr.montoPendiente || 0), 0);
+  }, [activeDebtors]);
 
   // Metrics summary
   const totals = useMemo(() => {
     let totalSales = 0;
     let totalCommissions = 0;
     let totalNet = 0;
+    let totalPending = 0;
 
     filteredSales.forEach((s) => {
-      totalSales += s.precioCobrado;
-      totalCommissions += s.comisionCalculada;
-      totalNet += s.gananciaNeta;
+      totalSales += s.precioCobrado || 0;
+      totalCommissions += s.comisionCalculada || 0;
+      totalNet += s.gananciaNeta || 0;
+      totalPending += s.montoPendiente || 0;
     });
 
     return {
       totalSales,
       totalCommissions,
       totalNet,
+      totalPending,
       count: filteredSales.length,
     };
   }, [filteredSales]);
@@ -266,22 +456,26 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
       'Colaborador',
       'Cliente',
       'Servicio Realizado',
-      `Precio Cobrado (${currency})`,
+      'Precio Total',
+      'Monto Pagado',
+      'Saldo Pendiente',
       'Método de Pago',
       '% Comisión',
-      `Comisión Colaborador (${currency})`,
-      `Ganancia Neta Negocio (${currency})`,
+      'Comisión Colaborador',
+      'Ganancia Neta Negocio',
     ];
     const rows = filteredSales.map((s) => [
       s.fecha,
       s.colaborador,
       s.cliente,
       s.servicio,
-      s.precioCobrado.toFixed(2),
+      formatAmount(s.precioCobrado),
+      formatAmount(s.montoPagado ?? s.precioCobrado),
+      formatAmount(s.montoPendiente ?? 0),
       s.metodoPago,
       `${s.comisionPorcentaje}%`,
-      s.comisionCalculada.toFixed(2),
-      s.gananciaNeta.toFixed(2),
+      formatAmount(s.comisionCalculada),
+      formatAmount(s.gananciaNeta),
     ]);
     downloadCSV(`${businessName.replace(/\s+/g, '_')}_Registro_Ventas_Cierre.csv`, headers, rows);
     showToast('Cierre de ventas exportado a CSV.');
@@ -297,12 +491,55 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
         </div>
       )}
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Collaborators Management Modal */}
+      <CollaboratorsModal
+        isOpen={isCollabsModalOpen}
+        onClose={() => setIsCollabsModalOpen(false)}
+        collaborators={collaborators}
+        onSaveCollaborators={handleSaveCollaborators}
+        businessName={businessName}
+        defaultCommission={commissionDefault}
+      />
+
+      {/* Header with Quick Management Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0d1322] text-white p-4 rounded-2xl border border-slate-800 shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+            <Users className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+              Gestión de Equipo & Colaboradores
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                {collaborators.filter((c) => c.active).length} activos
+              </span>
+            </h3>
+            <p className="text-xs text-slate-400">
+              Personal asignable con reparto automático de comisiones para <strong className="text-slate-200">{businessName}</strong>.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            id="btn-manage-collaborators"
+            onClick={() => setIsCollabsModalOpen(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-2 rounded-xl transition-all shadow-md shadow-emerald-950/40 border border-emerald-400/40 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            title="Agregar, editar o eliminar colaboradores del negocio"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>👥 Administrar Colaboradores</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Summary KPI Cards with Standard 1,250.00 Format */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Ventas Totales */}
         <div className="p-4.5 bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl border border-slate-700 shadow-md flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Ventas Totales Cobradas
             </span>
             <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
@@ -311,7 +548,7 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
           </div>
           <div className="mt-3">
             <div className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight font-mono">
-              {currencySymbol} {totals.totalSales.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {formatAmount(totals.totalSales)}
             </div>
             <p className="text-[11px] text-emerald-400 font-medium mt-0.5">
               {totals.count} servicio{totals.count === 1 ? '' : 's'} registrado{totals.count === 1 ? '' : 's'}
@@ -322,8 +559,8 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
         {/* Card 2: Comisiones a Pagar */}
         <div className="p-4.5 bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl border border-slate-700 shadow-md flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Comisiones a Pagar al Equipo
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Comisiones Colaboradores
             </span>
             <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
               <Users className="w-4 h-4" />
@@ -331,18 +568,18 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
           </div>
           <div className="mt-3">
             <div className="text-2xl sm:text-3xl font-extrabold text-blue-300 tracking-tight font-mono">
-              {currencySymbol} {totals.totalCommissions.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {formatAmount(totals.totalCommissions)}
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Liquidación acumulada de colaboradores
+              Liquidación acumulada de equipo
             </p>
           </div>
         </div>
 
-        {/* Card 3: Ingreso Neto del Negocio */}
+        {/* Card 3: Ingreso Neto Negocio */}
         <div className="p-4.5 bg-gradient-to-br from-emerald-950/90 to-slate-900 text-white rounded-2xl border border-emerald-600/40 shadow-md flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
               Ingreso Neto del Negocio
             </span>
             <div className="w-8 h-8 rounded-lg bg-emerald-500/30 text-emerald-300 flex items-center justify-center">
@@ -351,16 +588,54 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
           </div>
           <div className="mt-3">
             <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400 tracking-tight font-mono">
-              {currencySymbol} {totals.totalNet.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {formatAmount(totals.totalNet)}
             </div>
             <p className="text-[11px] text-emerald-300/80 mt-0.5">
-              Margen neto tras deducir comisiones
+              Margen neto tras comisiones
+            </p>
+          </div>
+        </div>
+
+        {/* Card 4: Saldos Pendientes / Deudas Totales */}
+        <div
+          className={`p-4.5 rounded-2xl border shadow-md flex flex-col justify-between transition-colors ${
+            totalPendingDebtAll > 0
+              ? 'bg-gradient-to-br from-rose-950/90 to-slate-900 border-rose-600/50 text-white'
+              : 'bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700 text-slate-400'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span
+              className={`text-[10px] font-bold uppercase tracking-wider ${
+                totalPendingDebtAll > 0 ? 'text-rose-300' : 'text-slate-400'
+              }`}
+            >
+              Saldos Pendientes (Deudores)
+            </span>
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                totalPendingDebtAll > 0 ? 'bg-rose-500/30 text-rose-300' : 'bg-slate-800 text-slate-500'
+              }`}
+            >
+              <AlertCircle className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div
+              className={`text-2xl sm:text-3xl font-extrabold tracking-tight font-mono ${
+                totalPendingDebtAll > 0 ? 'text-rose-400' : 'text-slate-300'
+              }`}
+            >
+              {formatAmount(totalPendingDebtAll)}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {activeDebtors.length} cuenta{activeDebtors.length === 1 ? '' : 's'} por cobrar
             </p>
           </div>
         </div>
       </div>
 
-      {/* Dynamic Entry Form for Daily Sales */}
+      {/* Dynamic Entry Form for Daily Sales with Predictive Auto-complete & Debt Management */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 sm:p-6">
         <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
@@ -369,10 +644,10 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900">
-                Formulario de Registro Diario de Ventas y Comisiones
+                Formulario de Registro Diario de Ventas, Comisiones & Saldos
               </h3>
               <p className="text-xs text-slate-500">
-                Registra los servicios atendidos hoy en <span className="font-semibold text-slate-800">{businessName}</span>
+                Búsqueda predictiva con autocompletado de clientes registrados y colaboradores activos.
               </p>
             </div>
           </div>
@@ -383,7 +658,7 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
         </div>
 
         <form onSubmit={handleAddSale} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {/* 1. Fecha */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
@@ -400,32 +675,83 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
               />
             </div>
 
-            {/* 2. Colaborador */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <UserCheck className="w-3 h-3 text-slate-400" />
-                <span>Colaborador / Especialista *</span>
+            {/* 2. Colaborador / Especialista (Predictive Auto-complete) */}
+            <div className="relative" ref={collabDropdownRef}>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <UserCheck className="w-3 h-3 text-slate-400" />
+                  <span>Colaborador / Especialista *</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">Escribe o selecciona</span>
               </label>
               <div className="relative">
                 <input
                   type="text"
                   id="sale-input-colaborador"
-                  placeholder="Ej. Carlos M. o Laura"
-                  list="colaboradores-list"
+                  placeholder="Escribe la primera letra..."
                   value={formColaborador}
-                  onChange={(e) => setFormColaborador(e.target.value)}
+                  onFocus={() => setIsCollabDropdownOpen(true)}
+                  onChange={(e) => {
+                    setFormColaborador(e.target.value);
+                    setIsCollabDropdownOpen(true);
+                  }}
                   className={`w-full text-xs p-2.5 rounded-xl border bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-900 font-medium ${
                     formErrors['colaborador']
                       ? 'border-rose-400 focus:border-rose-500'
                       : 'border-slate-200 focus:border-emerald-500'
                   }`}
+                  autoComplete="off"
                 />
-                <datalist id="colaboradores-list">
-                  {suggestedCollaborators.map((name, i) => (
-                    <option key={i} value={name} />
-                  ))}
-                </datalist>
+                <button
+                  type="button"
+                  onClick={() => setIsCollabDropdownOpen(!isCollabDropdownOpen)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
               </div>
+
+              {/* Predictive Dropdown for Collaborators */}
+              {isCollabDropdownOpen && (
+                <div className="absolute z-30 left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="p-1.5 bg-slate-50 text-[10px] font-bold uppercase text-slate-500 border-b border-slate-100 flex justify-between items-center">
+                    <span>Colaboradores del Negocio</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCollabDropdownOpen(false);
+                        setIsCollabsModalOpen(true);
+                      }}
+                      className="text-emerald-600 hover:underline font-bold"
+                    >
+                      + Gestionar
+                    </button>
+                  </div>
+                  {filteredCollabSuggestions.length === 0 ? (
+                    <div className="p-3 text-xs text-slate-400 text-center">
+                      No hay coincidencias. Se guardará como nuevo colaborador.
+                    </div>
+                  ) : (
+                    filteredCollabSuggestions.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => handleSelectCollaborator(c)}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 flex items-center justify-between border-b border-slate-50 last:border-0 cursor-pointer transition-colors"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-900">{c.name}</div>
+                          <div className="text-[10px] text-slate-500">{c.role}</div>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                          {c.commissionDefault}% comisión
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
               {formErrors['colaborador'] && (
                 <span className="text-[10px] text-rose-500 font-medium mt-0.5 block">
                   {formErrors['colaborador']}
@@ -433,24 +759,79 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
               )}
             </div>
 
-            {/* 3. Cliente */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                <Users className="w-3 h-3 text-slate-400" />
-                <span>Nombre del Cliente *</span>
+            {/* 3. Nombre del Cliente (Predictive Auto-complete from Registered Clients DB) */}
+            <div className="relative" ref={clientDropdownRef}>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <Users className="w-3 h-3 text-slate-400" />
+                  <span>Nombre del Cliente *</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">Autocompleta desde clientes</span>
               </label>
-              <input
-                type="text"
-                id="sale-input-cliente"
-                placeholder="Ej. Mariana Soto"
-                value={formCliente}
-                onChange={(e) => setFormCliente(e.target.value)}
-                className={`w-full text-xs p-2.5 rounded-xl border bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-900 font-medium ${
-                  formErrors['cliente']
-                    ? 'border-rose-400 focus:border-rose-500'
-                    : 'border-slate-200 focus:border-emerald-500'
-                }`}
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  id="sale-input-cliente"
+                  placeholder="Escribe la primera letra..."
+                  value={formCliente}
+                  onFocus={() => {
+                    if (registeredClients.length > 0) setIsClientDropdownOpen(true);
+                  }}
+                  onChange={(e) => {
+                    setFormCliente(e.target.value);
+                    setIsClientDropdownOpen(true);
+                  }}
+                  className={`w-full text-xs p-2.5 rounded-xl border bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-900 font-medium ${
+                    formErrors['cliente']
+                      ? 'border-rose-400 focus:border-rose-500'
+                      : 'border-slate-200 focus:border-emerald-500'
+                  }`}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsClientDropdownOpen(!isClientDropdownOpen)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Predictive Dropdown for Registered Clients */}
+              {isClientDropdownOpen && (
+                <div className="absolute z-30 left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="p-1.5 bg-slate-50 text-[10px] font-bold uppercase text-slate-500 border-b border-slate-100 flex justify-between items-center">
+                    <span>Clientes Registrados ({registeredClients.length})</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Haz clic para autocompletar</span>
+                  </div>
+                  {filteredClientSuggestions.length === 0 ? (
+                    <div className="p-3 text-xs text-slate-400 text-center">
+                      {formCliente.trim() ? 'No se encontraron clientes registrados con ese nombre.' : 'Escribe para buscar clientes.'}
+                    </div>
+                  ) : (
+                    filteredClientSuggestions.map((cli) => {
+                      const name = Object.values(cli.data)[0] || 'Cliente';
+                      const phone = cli.data['Teléfono / WhatsApp'] || cli.data['Teléfono'] || '';
+                      return (
+                        <button
+                          key={cli.id}
+                          type="button"
+                          onClick={() => handleSelectClient(cli)}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-emerald-50 flex items-center justify-between border-b border-slate-50 last:border-0 cursor-pointer transition-colors"
+                        >
+                          <div className="font-bold text-slate-900">{name}</div>
+                          {phone && (
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              {phone}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
               {formErrors['cliente'] && (
                 <span className="text-[10px] text-rose-500 font-medium mt-0.5 block">
                   {formErrors['cliente']}
@@ -458,7 +839,7 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
               )}
             </div>
 
-            {/* 4. Servicio */}
+            {/* 4. Servicio Realizado */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                 <Sparkles className="w-3 h-3 text-slate-400" />
@@ -468,7 +849,7 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
                 <input
                   type="text"
                   id="sale-input-servicio"
-                  placeholder="Ej. Corte VIP + Barba"
+                  placeholder="Ej. Corte VIP + Tratamiento"
                   list="servicios-list"
                   value={formServicio}
                   onChange={(e) => setFormServicio(e.target.value)}
@@ -491,16 +872,16 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
               )}
             </div>
 
-            {/* 5. Precio Cobrado */}
+            {/* 5. Precio Cobrado / Total */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                 <DollarSign className="w-3 h-3 text-slate-400" />
-                <span>Precio Cobrado ({currencySymbol}) *</span>
+                <span>Precio Total del Servicio *</span>
               </label>
               <input
                 type="number"
                 id="sale-input-precio"
-                placeholder="Ej. 450"
+                placeholder="Ej. 300.00"
                 min="0"
                 step="any"
                 value={formPrecio}
@@ -518,7 +899,41 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
               )}
             </div>
 
-            {/* 6. Método de Pago */}
+            {/* 6. Monto Pendiente de Pago (Gestión de Deudores) */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1 text-rose-700">
+                  <AlertCircle className="w-3 h-3 text-rose-600" />
+                  <span>Monto Pendiente de Pago</span>
+                </span>
+                <span className="text-[10px] text-slate-400">Si pagó parcial o debe</span>
+              </label>
+              <input
+                type="number"
+                id="sale-input-monto-pendiente"
+                placeholder="0.00 si pagó completo"
+                min="0"
+                max={parsedPrice || undefined}
+                step="any"
+                value={formMontoPendiente}
+                onChange={(e) => setFormMontoPendiente(e.target.value)}
+                className={`w-full text-xs p-2.5 rounded-xl border bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 text-slate-900 font-bold ${
+                  parsedPending > 0 ? 'border-rose-300 text-rose-700 bg-rose-50/50' : 'border-slate-200'
+                }`}
+              />
+              {formErrors['pendiente'] && (
+                <span className="text-[10px] text-rose-500 font-medium mt-0.5 block">
+                  {formErrors['pendiente']}
+                </span>
+              )}
+              {parsedPending > 0 && parsedPrice > 0 && (
+                <span className="text-[10px] text-rose-600 font-semibold mt-0.5 block">
+                  Pagó hoy: {formatAmount(parsedPaid)} | Debe: {formatAmount(parsedPending)}
+                </span>
+              )}
+            </div>
+
+            {/* 7. Método de Pago */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                 <CreditCard className="w-3 h-3 text-slate-400" />
@@ -537,7 +952,7 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
               </select>
             </div>
 
-            {/* 7. % Comisión */}
+            {/* 8. % Comisión Colaborador */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                 <Calculator className="w-3 h-3 text-slate-400" />
@@ -557,98 +972,208 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
               </div>
             </div>
 
-            {/* 8. Live Preview & Submit Button */}
-            <div className="flex flex-col justify-end">
-              <button
-                type="submit"
-                id="btn-submit-sale-record"
-                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all shadow-sm hover:shadow-md cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98]"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>+ Agregar al Cierre</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Real-time Calculation Badge under form */}
-          {parsedPrice > 0 && (
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-              <span className="text-slate-600 font-medium">
-                Cálculo instantáneo para este servicio:
-              </span>
-              <div className="flex items-center gap-4">
-                <span className="text-slate-700">
-                  Total Cobrado: <strong className="text-slate-900">{currencySymbol}{parsedPrice.toFixed(2)}</strong>
+            {/* Dynamic Calculation Output Preview Card */}
+            <div className="bg-slate-900 text-white p-3 rounded-xl border border-slate-800 flex flex-col justify-center">
+              <div className="flex justify-between items-center text-[11px] mb-1">
+                <span className="text-slate-400">Comisión Especialista:</span>
+                <span className="font-bold text-blue-300 font-mono">
+                  {formatAmount(calculatedCommission)}
                 </span>
-                <span className="text-blue-700">
-                  Comisión ({formComisionPct}%): <strong>{currencySymbol}{calculatedCommission.toFixed(2)}</strong>
-                </span>
-                <span className="text-emerald-700 font-bold bg-emerald-100/60 px-2 py-0.5 rounded">
-                  Ganancia Neta: {currencySymbol}{calculatedNet.toFixed(2)}
+              </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-slate-400">Ganancia Neta Local:</span>
+                <span className="font-bold text-emerald-400 font-mono">
+                  {formatAmount(calculatedNet)}
                 </span>
               </div>
             </div>
-          )}
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="submit"
+              id="btn-submit-daily-sale"
+              className="inline-flex items-center gap-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-5 py-2.5 rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer hover:scale-[1.01] active:scale-[0.98]"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Guardar Venta del Día</span>
+            </button>
+          </div>
         </form>
       </div>
 
-      {/* Interactive Sales Table Bar */}
-      <div className="flex flex-col sm:flex-row gap-3 items-center justify-between flex-wrap">
-        <div className="flex items-center gap-2.5 flex-wrap w-full sm:w-auto">
-          {/* Search bar */}
+      {/* Highlighted Block: Clientes Deudores / Saldos Pendientes del Día */}
+      {activeDebtors.length > 0 && (
+        <div className="bg-gradient-to-r from-rose-950 via-slate-900 to-rose-950 text-white rounded-2xl border border-rose-700/60 shadow-lg p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-rose-800/60">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/30">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  Clientes Deudores / Saldos Pendientes
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                    Total Adeudado: {formatAmount(totalPendingDebtAll)}
+                  </span>
+                </h4>
+                <p className="text-[11px] text-rose-300/80">
+                  Cuentas con cobros pendientes registradas en {businessName}.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setFilterDebtorOnly(!filterDebtorOnly)}
+              className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition-colors cursor-pointer ${
+                filterDebtorOnly
+                  ? 'bg-rose-600 text-white border-rose-500'
+                  : 'bg-rose-950/80 text-rose-200 border-rose-700 hover:bg-rose-900'
+              }`}
+            >
+              {filterDebtorOnly ? 'Mostrar Todas las Ventas' : 'Filtrar Solo Deudores'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-4">
+            {activeDebtors.map((debtor) => {
+              const cleanPhone = debtor.clientePhone ? debtor.clientePhone.replace(/[^0-9]/g, '') : '';
+              const waMsg = encodeURIComponent(
+                `Hola ${debtor.cliente}, te saludamos de ${businessName}. Te recordamos amablemente tu saldo pendiente de ${formatAmount(debtor.montoPendiente)} por tu servicio de "${debtor.servicio}" del día ${debtor.fecha}. ¡Muchas gracias!`
+              );
+              return (
+                <div
+                  key={debtor.id}
+                  className="bg-slate-900/90 border border-rose-700/50 rounded-xl p-3.5 flex flex-col justify-between space-y-3"
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-white">{debtor.cliente}</span>
+                      <span className="text-rose-400 font-mono font-extrabold text-xs bg-rose-950 px-2 py-0.5 rounded border border-rose-700">
+                        Debe: {formatAmount(debtor.montoPendiente)}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-300 mt-1">
+                      <span>{debtor.servicio}</span>
+                      <span className="text-slate-500"> • {debtor.fecha}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Atendido por: <strong className="text-slate-200">{debtor.colaborador}</strong> (Precio Total: {formatAmount(debtor.precioCobrado)})
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+                    {cleanPhone && (
+                      <a
+                        href={`https://wa.me/${cleanPhone}?text=${waMsg}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 inline-flex items-center justify-center gap-1 text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 py-1.5 px-2 rounded-lg transition-colors"
+                        title="Enviar recordatorio por WhatsApp"
+                      >
+                        <MessageCircle className="w-3 h-3" />
+                        <span>Cobrar WhatsApp</span>
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleSettleDebtSale(debtor.id)}
+                      className="flex-1 inline-flex items-center justify-center gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700 py-1.5 px-2 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Check className="w-3 h-3" />
+                      <span>Saldar Pago</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Filter and Search Bar for Sales */}
+      <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          {/* Search text */}
           <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              id="search-sales-input"
-              placeholder="Buscar cliente, especialista..."
+              id="input-search-sales"
+              placeholder="Buscar cliente, servicio..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-800"
+              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-800"
             />
           </div>
 
-          {/* Filter by Colaborador */}
-          <div className="flex items-center gap-1 text-xs">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
+          {/* Filter Colaborador */}
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2.5 py-1">
+            <Filter className="w-3 h-3 text-slate-400" />
             <select
+              id="filter-select-colaborador"
               value={filterColaborador}
               onChange={(e) => setFilterColaborador(e.target.value)}
-              className="text-xs px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium"
+              className="text-xs bg-transparent border-0 focus:outline-none text-slate-700 font-medium cursor-pointer"
             >
-              <option value="all">Todos los colaboradores</option>
-              {Array.from(new Set(sales.map((s) => s.colaborador))).map((collab, i) => (
-                <option key={i} value={collab}>
-                  {collab}
+              <option value="all">Todos los Colaboradores</option>
+              {collaborators.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
                 </option>
               ))}
             </select>
           </div>
+
+          {/* Filter Fecha */}
+          <input
+            type="date"
+            id="filter-input-fecha"
+            value={filterFecha}
+            onChange={(e) => setFilterFecha(e.target.value)}
+            className="text-xs py-1 px-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none cursor-pointer"
+            title="Filtrar por fecha específica"
+          />
+
+          {(filterFecha || filterColaborador !== 'all' || searchTerm || filterDebtorOnly) && (
+            <button
+              onClick={() => {
+                setFilterFecha('');
+                setFilterColaborador('all');
+                setSearchTerm('');
+                setFilterDebtorOnly(false);
+              }}
+              className="text-xs text-emerald-600 hover:underline font-semibold cursor-pointer"
+            >
+              Limpiar filtros
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            id="btn-export-sales-csv"
-            onClick={handleExportSalesCSV}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl transition-all shadow-2xs cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Descargar Cierre (.CSV)</span>
-          </button>
-        </div>
+        {/* CSV Export Button */}
+        <button
+          type="button"
+          id="btn-export-sales-csv"
+          onClick={handleExportSalesCSV}
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl transition-all shadow-2xs cursor-pointer shrink-0"
+          title="Descargar reporte de cierre en formato CSV para Google Sheets"
+        >
+          <Download className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Exportar Cierre (.CSV)</span>
+        </button>
       </div>
 
-      {/* Interactive Sales Table */}
+      {/* Interactive Sales Records Table with Standard Numbers (1,250.00) */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
         {filteredSales.length === 0 ? (
-          <div className="p-10 text-center">
-            <FileSpreadsheet className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h4 className="text-sm font-bold text-slate-800">No hay ventas registradas</h4>
+          <div className="p-12 text-center">
+            <FileSpreadsheet className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <h4 className="text-sm font-bold text-slate-800">No hay ventas que coincidan</h4>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              {searchTerm || filterColaborador !== 'all'
+              {searchTerm || filterFecha || filterColaborador !== 'all' || filterDebtorOnly
                 ? 'No se encontraron registros con los filtros seleccionados.'
-                : 'Utiliza el formulario de arriba para ingresar el primer servicio cobrado del día.'}
+                : 'Aún no has ingresado ventas para esta empresa. Usa el formulario de arriba para registrar los servicios de hoy.'}
             </p>
           </div>
         ) : (
@@ -656,104 +1181,111 @@ export const SalesFinanceManager: React.FC<SalesFinanceManagerProps> = ({
             <table className="w-full text-left text-xs text-slate-700">
               <thead className="bg-slate-50 text-slate-900 uppercase font-semibold text-[11px] tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-4">Fecha</th>
-                  <th className="py-3 px-4">Colaborador</th>
-                  <th className="py-3 px-4">Cliente / Servicio</th>
-                  <th className="py-3 px-4">Método</th>
-                  <th className="py-3 px-4 text-right">Precio Cobrado</th>
-                  <th className="py-3 px-4 text-right">Comisión</th>
-                  <th className="py-3 px-4 text-right">Ganancia Neta</th>
-                  <th className="py-3 px-4 text-center">Acción</th>
+                  <th className="py-3.5 px-4">Fecha</th>
+                  <th className="py-3.5 px-4">Colaborador</th>
+                  <th className="py-3.5 px-4">Cliente</th>
+                  <th className="py-3.5 px-4">Servicio</th>
+                  <th className="py-3.5 px-4 text-right">Precio Total</th>
+                  <th className="py-3.5 px-4 text-right">Saldo Pendiente</th>
+                  <th className="py-3.5 px-4 text-right">Comisión (%)</th>
+                  <th className="py-3.5 px-4 text-right">Neto Negocio</th>
+                  <th className="py-3.5 px-4">Pago</th>
+                  <th className="py-3.5 px-4 text-right">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredSales.map((sale) => (
-                  <tr key={sale.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap">
-                      {sale.fecha}
-                    </td>
-                    <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold flex items-center justify-center shrink-0">
-                          {sale.colaborador.charAt(0).toUpperCase()}
+                {filteredSales.map((sale) => {
+                  const isDebtor = (sale.montoPendiente || 0) > 0;
+                  return (
+                    <tr key={sale.id} className="hover:bg-slate-50/90 transition-colors">
+                      <td className="py-3 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                        {sale.fecha}
+                      </td>
+                      <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
+                        {sale.colaborador}
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-slate-800">
+                        {sale.cliente}
+                      </td>
+                      <td className="py-3 px-4 text-slate-600 text-[11px]">
+                        {sale.servicio}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
+                        {formatAmount(sale.precioCobrado)}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold">
+                        {isDebtor ? (
+                          <span className="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded text-[11px]">
+                            {formatAmount(sale.montoPendiente)}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-700 font-normal">
+                            0.00
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-blue-700 font-semibold">
+                        {formatAmount(sale.comisionCalculada)} ({sale.comisionPorcentaje}%)
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-emerald-700 font-bold">
+                        {formatAmount(sale.gananciaNeta)}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="inline-block text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                          {sale.metodoPago}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {isDebtor && (
+                            <button
+                              type="button"
+                              onClick={() => handleSettleDebtSale(sale.id)}
+                              className="text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-2 py-1 rounded transition-colors"
+                              title="Marcar saldo pendiente como pagado"
+                            >
+                              Saldar
+                            </button>
+                          )}
+
+                          {deleteConfirmId === sale.id ? (
+                            <div className="inline-flex items-center gap-1 bg-rose-50 border border-rose-200 p-1 rounded-lg">
+                              <span className="text-[10px] text-rose-700 font-bold px-1">¿Borrar?</span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSale(sale.id)}
+                                className="text-[10px] font-bold text-white bg-rose-600 hover:bg-rose-700 px-2 py-0.5 rounded"
+                              >
+                                Sí
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmId(null)}
+                                className="text-[10px] font-bold text-slate-600 hover:bg-slate-200 px-1.5 py-0.5 rounded"
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              id={`btn-delete-sale-${sale.id}`}
+                              onClick={() => setDeleteConfirmId(sale.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Eliminar este registro de venta"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
-                        <span>{sale.colaborador}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 max-w-xs">
-                      <div className="font-bold text-slate-800 text-xs">{sale.cliente}</div>
-                      <div className="text-[11px] text-slate-500 truncate">{sale.servicio}</div>
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-medium border border-slate-200">
-                        {sale.metodoPago}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right font-bold text-slate-900 font-mono whitespace-nowrap">
-                      {currencySymbol} {sale.precioCobrado.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4 text-right text-blue-700 font-semibold font-mono whitespace-nowrap">
-                      <div className="text-xs">
-                        {currencySymbol} {sale.comisionCalculada.toFixed(2)}
-                      </div>
-                      <div className="text-[10px] text-slate-400">{sale.comisionPorcentaje}%</div>
-                    </td>
-                    <td className="py-3 px-4 text-right font-bold text-emerald-700 font-mono whitespace-nowrap">
-                      {currencySymbol} {sale.gananciaNeta.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4 text-center whitespace-nowrap">
-                      {deleteConfirmId === sale.id ? (
-                        <div className="inline-flex items-center gap-1 bg-rose-50 border border-rose-200 p-1 rounded-lg">
-                          <span className="text-[10px] text-rose-700 font-bold px-1">¿Borrar?</span>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSale(sale.id)}
-                            className="text-[10px] font-bold text-white bg-rose-600 hover:bg-rose-700 px-2 py-0.5 rounded cursor-pointer"
-                          >
-                            Sí
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeleteConfirmId(null)}
-                            className="text-[10px] font-bold text-slate-600 hover:bg-slate-200 px-1.5 py-0.5 rounded cursor-pointer"
-                          >
-                            No
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          id={`btn-delete-sale-${sale.id}`}
-                          onClick={() => setDeleteConfirmId(sale.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="Eliminar este registro de venta"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
-      </div>
-
-      {/* Rules and Closing Advice Accordion / Box */}
-      <div className="bg-slate-50 p-4.5 rounded-2xl border border-slate-200 space-y-2">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-          <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-          <span>Reglas de Liquidación y Políticas Clave ({businessName})</span>
-        </h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-600 pt-1">
-          {moduloColaboradores.paymentRules.map((rule, idx) => (
-            <div key={idx} className="flex items-start gap-2 bg-white p-2.5 rounded-xl border border-slate-200">
-              <span className="text-emerald-600 font-bold shrink-0">•</span>
-              <span>{rule}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
