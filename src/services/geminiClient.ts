@@ -2,7 +2,7 @@
 // In production, ensure API keys are protected or restricted in Google Cloud Console.
 
 import { GoogleGenAI } from '@google/genai';
-import { BusinessFormData, GeneratedCRMSystem } from '../types';
+import { BusinessFormData, GeneratedCRMSystem, CRMField } from '../types';
 
 // Retrieve API key from client-side environment variables
 export const getClientApiKey = (): string => {
@@ -500,34 +500,81 @@ export const refineCRMChatClientSide = async (
       lower.includes('agrega') ||
       lower.includes('agregar') ||
       lower.includes('añadir') ||
-      lower.includes('campo') ||
-      lower.includes('alergia') ||
-      lower.includes('piel') ||
-      lower.includes('foto')
+      lower.includes('incluye') ||
+      lower.includes('incluir') ||
+      lower.includes('crea') ||
+      lower.includes('crear') ||
+      lower.includes('campo')
     ) {
       let newFieldName = 'Alergias y Sensibilidad';
-      let category: any = 'Especialidad / Historial Técnico';
+      let category: 'Datos Generales' | 'Especialidad / Historial Técnico' | 'Preferencias & Hábitos' | 'Financiero & Fidelización' = 'Especialidad / Historial Técnico';
+      let type: CRMField['type'] = 'Texto';
       let purpose = 'Precaución de salud previa a la aplicación de productos y tratamientos.';
-      let example = 'Sin alergias a químicos / Piel sensible al amoníaco';
+      let example = 'Sin alergias a químicos / Piel sensible';
 
-      if (lower.includes('foto') || lower.includes('antes') || lower.includes('después') || lower.includes('despues')) {
+      if (lower.includes('correo') || lower.includes('email') || lower.includes('mail')) {
+        newFieldName = 'Correo Electrónico';
+        category = 'Datos Generales';
+        type = 'Texto';
+        purpose = 'Envío de facturas digitales, promociones mensuales y recordatorios.';
+        example = 'cliente@gmail.com';
+      } else if (lower.includes('alergia') || lower.includes('sensibilidad')) {
+        newFieldName = 'Alergias y Sensibilidad';
+        category = 'Especialidad / Historial Técnico';
+        type = 'Texto';
+        purpose = 'Precaución técnica antes de aplicar tintes, productos químicos o anestesia.';
+        example = 'Alérgico a amoníaco / Piel reactiva';
+      } else if (lower.includes('rtn') || lower.includes('dni') || lower.includes('cedula') || lower.includes('cédula') || lower.includes('identidad')) {
+        newFieldName = 'RTN / No. Identidad';
+        category = 'Datos Generales';
+        type = 'Texto';
+        purpose = 'Registro tributario y facturación legal en Honduras (SAR).';
+        example = '0801-1995-12345';
+      } else if (lower.includes('foto') || lower.includes('antes') || lower.includes('después') || lower.includes('despues')) {
         newFieldName = 'Link Fotos Antes y Después';
-        purpose = 'Enlace a carpeta de Drive o Notion con evidencia visual del servicio.';
+        category = 'Especialidad / Historial Técnico';
+        type = 'Teléfono / Link';
+        purpose = 'Enlace a carpeta de Google Drive o Notion con evidencia visual del servicio.';
         example = 'drive.google.com/fotos-cli-001';
       } else if (lower.includes('piel') || lower.includes('cutis')) {
         newFieldName = 'Tipo de Piel / Cutis';
-        purpose = 'Diagnóstico dérmico para selección de productos adecuados.';
-        example = 'Piel mixta con tendencia a rosácea';
+        category = 'Especialidad / Historial Técnico';
+        type = 'Selector / Opciones';
+        purpose = 'Diagnóstico dérmico para selección de productos y aparatología adecuada.';
+        example = 'Piel mixta con tendencia grasa';
+      } else if (lower.includes('instagram') || lower.includes('tiktok') || lower.includes('redes')) {
+        newFieldName = 'Usuario de Instagram / Redes';
+        category = 'Datos Generales';
+        type = 'Texto';
+        purpose = 'Etiquetado en historias y marketing de fidelización social.';
+        example = '@cliente_hn';
+      } else if (lower.includes('direccion') || lower.includes('dirección') || lower.includes('colonia') || lower.includes('domicilio')) {
+        newFieldName = 'Dirección / Colonia';
+        category = 'Datos Generales';
+        type = 'Texto';
+        purpose = 'Ubicación física para entregas o citas a domicilio.';
+        example = 'Col. Palmira, Tegucigalpa';
       } else if (lower.includes('preferencia') || lower.includes('bebida') || lower.includes('música') || lower.includes('musica')) {
-        newFieldName = 'Preferencia de Ambiente y Bebida';
+        newFieldName = 'Preferencia de Bebida y Trato';
         category = 'Preferencias & Hábitos';
-        purpose = 'Atención VIP personalizada durante su estancia.';
-        example = 'Café cortado con azúcar / Prefiere música suave';
-      } else if (lower.includes('"') || lower.includes("'")) {
-        const match = msg.match(/["']([^"']+)["']/);
-        if (match && match[1]) {
-          newFieldName = match[1];
+        type = 'Texto';
+        purpose = 'Atención VIP personalizada durante su estancia en el local.';
+        example = 'Café negro sin azúcar / Prefiere ambiente tranquilo';
+      } else {
+        // Dynamic extraction from prompt
+        const matchQuotes = msg.match(/["']([^"']+)["']/);
+        if (matchQuotes && matchQuotes[1]) {
+          newFieldName = matchQuotes[1].trim();
+        } else {
+          const matchDe = msg.match(/(?:campo|agrega|agregar|incluir|crear)\s+(?:de\s+|para\s+|llamado\s+)?([a-zA-ZáéíóúÁÉÍÓÚñÑ\s]{3,35})/i);
+          if (matchDe && matchDe[1]) {
+            newFieldName = matchDe[1].trim();
+            // Capitalize first letter
+            newFieldName = newFieldName.charAt(0).toUpperCase() + newFieldName.slice(1);
+          }
         }
+        purpose = `Registro específico de ${newFieldName.toLowerCase()} para optimizar la atención.`;
+        example = `Dato de prueba para ${newFieldName}`;
       }
 
       const exists = updated.fichaCliente.fields.some(
@@ -538,15 +585,20 @@ export const refineCRMChatClientSide = async (
         updated.fichaCliente.fields.push({
           name: newFieldName,
           category,
-          type: 'Texto',
+          type,
           isRequired: false,
           example,
           purpose,
         });
       }
 
+      if (!updated.fichaCliente.sampleClientData) {
+        updated.fichaCliente.sampleClientData = {};
+      }
+      updated.fichaCliente.sampleClientData[newFieldName] = example;
+
       return {
-        replyText: `¡Listo! He añadido el nuevo campo **"${newFieldName}"** a tu Ficha de Clientes. La tabla se ha actualizado automáticamente en tu pantalla.`,
+        replyText: `¡Listo! He añadido el campo **"${newFieldName}"** (${category}) a tu Ficha de Clientes. Tanto la tabla de columnas como el simulador de perfil se han actualizado en tiempo real.`,
         updatedCRM: updated,
       };
     }

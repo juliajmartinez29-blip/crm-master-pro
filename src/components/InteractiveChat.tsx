@@ -29,10 +29,10 @@ interface InteractiveChatProps {
 
 const QUICK_PROMPTS = [
   '➕ Agrega un campo de "Alergias y Sensibilidad" a la ficha',
-  '✂️ Cambia el recordatorio de 24h por uno de 48h con confirmación',
-  '💰 Ajusta las reglas de comisión para retener 3% de pago con tarjeta',
-  '🎁 Redacta un mensaje de WhatsApp para clientes que cumplen 60 días sin visita',
-  '📋 Agrega un campo para registrar fotos de Antes y Después en la ficha',
+  '📧 Agrega un campo de "Correo Electrónico" a la ficha',
+  '🇭🇳 Agrega un campo de "RTN / No. Identidad" para Honduras',
+  '✂️ Cambia el recordatorio de WhatsApp a 48h con confirmación',
+  '🧹 Simplifica la tabla quitando campos no esenciales',
 ];
 
 export const InteractiveChat: React.FC<InteractiveChatProps> = ({

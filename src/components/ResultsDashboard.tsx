@@ -393,12 +393,19 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 bg-white p-4 rounded-lg border border-slate-200 shadow-xs">
-                {crm.fichaCliente.fields.slice(0, 9).map((f, i) => (
-                  <div key={i} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">
-                      {f.name}
-                    </span>
-                    <span className="text-xs font-semibold text-slate-800">
+                {crm.fichaCliente.fields.map((f, i) => (
+                  <div key={i} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 transition-all hover:border-emerald-200">
+                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 truncate">
+                        {f.name}
+                      </span>
+                      {f.isRequired && (
+                        <span className="text-[9px] font-bold text-rose-600 bg-rose-50 px-1 py-0.2 rounded">
+                          Obligatorio
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs font-semibold text-slate-800 break-words block">
                       {crm.fichaCliente.sampleClientData?.[f.name] || f.example}
                     </span>
                   </div>
