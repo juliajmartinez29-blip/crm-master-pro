@@ -359,12 +359,12 @@ Queremos celebrarlo contigo: durante todo tu mes de cumpleaños tienes un *regal
         },
         {
           formulaName: 'Días transcurridos desde la última visita',
-          formulaCode: '=SI(ESBLANCO(I2), "Sin visita", HOY()-I2)',
+          formulaCode: '=SI(ESBLANCO(I2); "Sin visita"; HOY()-I2)',
           explanation: 'Muestra cuántos días han pasado para saber si el cliente requiere un mensaje de reactivación.',
         },
         {
-          formulaName: 'Alerta visual de cliente inactivo (+30 días)',
-          formulaCode: '=SI(HOY()-I2>30, "🚨 TOCA REACTIVAR", "✅ AL DÍA")',
+          formulaName: 'Alerta de cliente inactivo (+30 días)',
+          formulaCode: '=SI(HOY()-I2>30; "🚨 TOCA REACTIVAR"; "✅ AL DÍA")',
           explanation: 'Coloca una etiqueta automática en la hoja para saber a quién enviar WhatsApp.',
         },
       ],

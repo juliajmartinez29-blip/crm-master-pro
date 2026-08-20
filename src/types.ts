@@ -120,6 +120,35 @@ export interface ClientRecord {
   data: Record<string, any>;
 }
 
+export interface SaleRecord {
+  id: string;
+  fecha: string;
+  colaborador: string;
+  cliente: string;
+  servicio: string;
+  precioCobrado: number;
+  metodoPago: string;
+  comisionPorcentaje: number;
+  comisionCalculada: number;
+  gananciaNeta: number;
+  notas?: string;
+  createdAt: string;
+}
+
+export interface StoredBusinessProfile {
+  id: string;
+  name: string;
+  businessType: string;
+  city: string;
+  country: string;
+  currency: string;
+  currencySymbol: string;
+  createdAt: string;
+  formData: BusinessFormData;
+  crmSystem: GeneratedCRMSystem;
+  chatHistory: ChatMessage[];
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';

@@ -26,6 +26,7 @@ import { downloadCSV } from '../utils/exportUtils';
 import confetti from 'canvas-confetti';
 
 interface ClientManagerProps {
+  businessId?: string;
   fields: CRMField[];
   businessName: string;
   currencySymbol?: string;
@@ -34,6 +35,7 @@ interface ClientManagerProps {
 }
 
 export const ClientManager: React.FC<ClientManagerProps> = ({
+  businessId,
   fields,
   businessName,
   currencySymbol = '$',
@@ -41,8 +43,8 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
   onOpenChatWithPrompt,
 }) => {
   const storageKey = useMemo(
-    () => `crm_client_db_${businessName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-    [businessName]
+    () => `crm_client_db_${businessId || businessName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+    [businessId, businessName]
   );
 
   // Load clients from localStorage or seed initial data
@@ -158,6 +160,21 @@ export const ClientManager: React.FC<ClientManagerProps> = ({
       console.error('Error saving clients to localStorage', e);
     }
   }, [clients, storageKey]);
+
+  // Sync clients when storageKey changes (switching businesses)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setClients(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn('Error loading clients on business switch', e);
+    }
+  }, [storageKey]);
 
   const showToast = (msg: string) => {
     setSuccessToast(msg);

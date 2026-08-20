@@ -20,8 +20,9 @@ import {
   AlertCircle,
   Smartphone,
 } from 'lucide-react';
-import { GeneratedCRMSystem, WhatsAppTemplate, CRMField } from '../types';
+import { GeneratedCRMSystem, WhatsAppTemplate, CRMField, BusinessFormData } from '../types';
 import { ClientManager } from './ClientManager';
+import { SalesFinanceManager } from './SalesFinanceManager';
 import {
   copyToClipboard,
   downloadCSV,
@@ -33,6 +34,8 @@ import confetti from 'canvas-confetti';
 
 interface ResultsDashboardProps {
   crm: GeneratedCRMSystem;
+  businessId?: string;
+  businessData?: BusinessFormData;
   onOpenChatWithPrompt: (prompt: string) => void;
 }
 
@@ -41,6 +44,8 @@ type FichaSubView = 'clientes' | 'estructura';
 
 export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   crm,
+  businessId,
+  businessData,
   onOpenChatWithPrompt,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('ficha');
@@ -348,6 +353,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             {/* SUB-VIEW 1: Real Client Manager */}
             {fichaSubView === 'clientes' && (
               <ClientManager
+                businessId={businessId}
                 fields={crm.fichaCliente.fields}
                 businessName={crm.businessSummary.name}
                 currencySymbol={crm.businessSummary.currency === 'HNL' ? 'L' : '$'}
@@ -680,17 +686,17 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           </div>
         )}
 
-        {/* ================= TAB 3: CONTROL DE COLABORADORES ================= */}
+        {/* ================= TAB 3: CONTROL DE COLABORADORES & FINANZAS ================= */}
         {activeTab === 'colaboradores' && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                   <Users className="w-5 h-5 text-emerald-600" />
-                  Módulo de Control de Empleados, Cierre Diario & Comisiones
+                  Control de Colaboradores, Registro Diario & Finanzas
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Esquema: <span className="font-semibold text-slate-800">{crm.moduloColaboradores.modelType}</span>
+                  Gestiona las ventas del día, el reparto automático de comisiones y el margen neto para <strong className="text-slate-800">{crm.businessSummary.name}</strong>.
                 </p>
               </div>
 
@@ -698,7 +704,8 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 <button
                   id="btn-download-closing-csv"
                   onClick={handleDownloadClosingCSV}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                  title="Descargar plantilla de columnas para Google Sheets"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Descargar Plantilla Cierre (.CSV)</span>
@@ -706,7 +713,19 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
               </div>
             </div>
 
-            {/* Daily Closing Columns Format */}
+            {/* Interactive Real Sales & Finance Manager */}
+            <SalesFinanceManager
+              businessId={businessId || crm.businessSummary.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}
+              businessName={crm.businessSummary.name}
+              currency={crm.businessSummary.currency}
+              currencySymbol={crm.businessSummary.currency === 'HNL' ? 'L' : '$'}
+              commissionDefault={businessData?.commissionPercentage || 40}
+              moduloColaboradores={crm.moduloColaboradores}
+              servicesList={businessData?.services || ''}
+              collaboratorsCount={businessData?.collaboratorsCount || 2}
+            />
+
+            {/* Daily Closing Columns Format for Google Sheets */}
             <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
               <div className="bg-slate-900 text-white px-4 py-2.5 flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
@@ -741,95 +760,6 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                     ))}
                   </tbody>
                 </table>
-              </div>
-            </div>
-
-            {/* Sample Daily Closing Rows */}
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2.5 flex items-center gap-1.5">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                Ejemplo de Cierre de Caja del Día (Simulación)
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {crm.moduloColaboradores.sampleClosingRows.map((row, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-1 text-xs"
-                  >
-                    <div className="flex items-center justify-between font-bold text-slate-900">
-                      <span>{row.colaborador}</span>
-                      <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-[11px]">
-                        {row.monto}
-                      </span>
-                    </div>
-                    <p className="text-slate-600 text-[11px]">{row.servicio}</p>
-                    <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                      <span>Pago: {row.metodoPago}</span>
-                      <span className="font-semibold text-slate-700">Comisión: {row.comisionCalculada}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Interactive Commission Simulator */}
-            <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-xl p-5 border border-slate-700 shadow-md">
-              <div className="flex items-center gap-2 mb-3">
-                <Calculator className="w-4 h-4 text-emerald-400" />
-                <h4 className="text-sm font-bold text-white">
-                  Calculadora Interactiva de Reparto de Ganancias
-                </h4>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                <div>
-                  <label className="text-[10px] uppercase font-semibold text-slate-400 block mb-1">
-                    Precio del Servicio ({crm.businessSummary.currency}):
-                  </label>
-                  <input
-                    type="number"
-                    value={calcServicePrice}
-                    onChange={(e) => setCalcServicePrice(Number(e.target.value) || 0)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase font-semibold text-slate-400 block mb-1">
-                    % Comisión Colaborador:
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={calcCommissionPct}
-                    onChange={(e) => setCalcCommissionPct(Number(e.target.value) || 0)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-bold"
-                  />
-                </div>
-                <div className="bg-slate-950/70 p-3 rounded-lg border border-slate-700 flex flex-col justify-center">
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-slate-400">Colaborador:</span>
-                    <span className="font-bold text-emerald-400">
-                      ${((calcServicePrice * calcCommissionPct) / 100).toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Negocio (Neto):</span>
-                    <span className="font-bold text-amber-300">
-                      ${(calcServicePrice - (calcServicePrice * calcCommissionPct) / 100).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Rules */}
-              <div className="pt-3 border-t border-slate-700 text-xs text-slate-300 space-y-1">
-                <span className="font-bold text-emerald-400 block mb-1">Reglas Clave de Pago:</span>
-                {crm.moduloColaboradores.paymentRules.map((rule, idx) => (
-                  <p key={idx} className="flex items-start gap-1.5 text-slate-300">
-                    <span className="text-emerald-400">•</span>
-                    <span>{rule}</span>
-                  </p>
-                ))}
               </div>
             </div>
           </div>
@@ -906,10 +836,38 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 Fórmulas Útiles de Google Sheets Listas para Copiar
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {crm.guiaPasoAPaso.googleSheetsFormulaHelpers.map((formula, idx) => (
+                {(crm.guiaPasoAPaso.googleSheetsFormulaHelpers && crm.guiaPasoAPaso.googleSheetsFormulaHelpers.length > 0
+                  ? crm.guiaPasoAPaso.googleSheetsFormulaHelpers.map((formula) => {
+                      let code = formula.formulaCode;
+                      // Ensure requested exact formula syntax with semicolons for Spanish locale in Sheets
+                      if (formula.formulaName.toLowerCase().includes('días') || formula.formulaName.toLowerCase().includes('dias') || formula.formulaName.toLowerCase().includes('transcurridos')) {
+                        code = '=SI(ESBLANCO(I2); "Sin visita"; HOY()-I2)';
+                      } else if (formula.formulaName.toLowerCase().includes('inactivo') || formula.formulaName.toLowerCase().includes('alerta') || formula.formulaName.toLowerCase().includes('reactivar')) {
+                        code = '=SI(HOY()-I2>30; "🚨 TOCA REACTIVAR"; "✅ AL DÍA")';
+                      }
+                      return { ...formula, formulaCode: code };
+                    })
+                  : [
+                      {
+                        formulaName: 'Cálculo de Comisión Automática',
+                        formulaCode: '=E2*G2',
+                        explanation: 'Multiplica el precio del servicio (columna E) por el % de comisión (columna G).',
+                      },
+                      {
+                        formulaName: 'Días transcurridos desde la última visita',
+                        formulaCode: '=SI(ESBLANCO(I2); "Sin visita"; HOY()-I2)',
+                        explanation: 'Muestra cuántos días han pasado para saber si el cliente requiere un mensaje de reactivación.',
+                      },
+                      {
+                        formulaName: 'Alerta de cliente inactivo (+30 días)',
+                        formulaCode: '=SI(HOY()-I2>30; "🚨 TOCA REACTIVAR"; "✅ AL DÍA")',
+                        explanation: 'Coloca una etiqueta automática en la hoja para saber a quién enviar WhatsApp.',
+                      },
+                    ]
+                ).map((formula, idx) => (
                   <div
                     key={idx}
-                    className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-2 flex flex-col justify-between"
+                    className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2 flex flex-col justify-between"
                   >
                     <div>
                       <span className="text-xs font-bold text-slate-900 block">
@@ -917,17 +875,18 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                       </span>
                       <p className="text-[11px] text-slate-500 mt-0.5">{formula.explanation}</p>
                     </div>
-                    <div className="flex items-center justify-between bg-slate-900 text-emerald-400 p-2 rounded font-mono text-xs">
-                      <span className="truncate">{formula.formulaCode}</span>
+                    <div className="flex items-center justify-between bg-slate-900 text-emerald-400 p-2.5 rounded-lg font-mono text-xs border border-slate-800">
+                      <span className="truncate select-all font-bold">{formula.formulaCode}</span>
                       <button
+                        type="button"
                         onClick={() => handleCopy(`fml-${idx}`, formula.formulaCode)}
-                        className="text-slate-400 hover:text-white ml-1 p-0.5"
-                        title="Copiar fórmula"
+                        className="text-slate-400 hover:text-white ml-2 p-1 rounded hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
+                        title="Copiar fórmula de Google Sheets"
                       >
                         {copiedId === `fml-${idx}` ? (
-                          <Check className="w-3 h-3 text-emerald-400" />
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
                         ) : (
-                          <Copy className="w-3 h-3" />
+                          <Copy className="w-3.5 h-3.5" />
                         )}
                       </button>
                     </div>

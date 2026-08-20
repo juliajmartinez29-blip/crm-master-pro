@@ -4,20 +4,57 @@ import { BusinessForm } from './components/BusinessForm';
 import { ResultsDashboard } from './components/ResultsDashboard';
 import { InteractiveChat } from './components/InteractiveChat';
 import { HelpModal } from './components/HelpModal';
-import { BusinessFormData, GeneratedCRMSystem, ChatMessage } from './types';
+import { BusinessFormData, GeneratedCRMSystem, ChatMessage, StoredBusinessProfile } from './types';
 import { BUSINESS_PRESETS } from './data/presets';
 import { generateCRMClientSide } from './services/geminiClient';
-import { Sparkles, AlertCircle, ArrowLeft, ShieldCheck, FileSpreadsheet, MessageSquare, HelpCircle, HardDrive } from 'lucide-react';
+import {
+  Sparkles,
+  AlertCircle,
+  ArrowLeft,
+  ShieldCheck,
+  FileSpreadsheet,
+  MessageSquare,
+  HelpCircle,
+  HardDrive,
+  Building2,
+  Plus,
+} from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const STORAGE_KEYS = {
+  BUSINESSES_LIST: 'crm_master_pro_businesses_list',
+  ACTIVE_BUSINESS_ID: 'crm_master_pro_active_business_id',
   FORM: 'crm_master_pro_form_data',
   CRM: 'crm_master_pro_generated_crm',
   CHAT: 'crm_master_pro_chat_history',
 };
 
 export default function App() {
-  // Initialize state with LocalStorage support
+  // Multibusiness profiles list in LocalStorage
+  const [businesses, setBusinesses] = useState<StoredBusinessProfile[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.BUSINESSES_LIST);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading businesses list', e);
+    }
+    return [];
+  });
+
+  const [activeBusinessId, setActiveBusinessId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.ACTIVE_BUSINESS_ID) || null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Current working form data
   const [formData, setFormData] = useState<BusinessFormData>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.FORM);
@@ -27,6 +64,7 @@ export default function App() {
     }
   });
 
+  // Current active generated CRM system
   const [crmSystem, setCrmSystem] = useState<GeneratedCRMSystem | null>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.CRM);
@@ -36,6 +74,7 @@ export default function App() {
     }
   });
 
+  // Current active chat history
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.CHAT);
@@ -50,12 +89,34 @@ export default function App() {
   const [externalPrompt, setExternalPrompt] = useState<string>('');
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
 
-  // Sync state to LocalStorage
+  // Sync businesses list to LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.BUSINESSES_LIST, JSON.stringify(businesses));
+    } catch (e) {
+      console.warn('Could not save businesses list to localStorage', e);
+    }
+  }, [businesses]);
+
+  // Sync activeBusinessId to LocalStorage
+  useEffect(() => {
+    try {
+      if (activeBusinessId) {
+        localStorage.setItem(STORAGE_KEYS.ACTIVE_BUSINESS_ID, activeBusinessId);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.ACTIVE_BUSINESS_ID);
+      }
+    } catch (e) {
+      console.warn('Could not save active business ID', e);
+    }
+  }, [activeBusinessId]);
+
+  // Sync form, CRM and chat to LocalStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.FORM, JSON.stringify(formData));
     } catch (e) {
-      console.warn('Could not save form data to localStorage', e);
+      console.warn('Could not save form data', e);
     }
   }, [formData]);
 
@@ -67,7 +128,7 @@ export default function App() {
         localStorage.removeItem(STORAGE_KEYS.CRM);
       }
     } catch (e) {
-      console.warn('Could not save CRM data to localStorage', e);
+      console.warn('Could not save CRM data', e);
     }
   }, [crmSystem]);
 
@@ -79,29 +140,87 @@ export default function App() {
         localStorage.removeItem(STORAGE_KEYS.CHAT);
       }
     } catch (e) {
-      console.warn('Could not save chat history to localStorage', e);
+      console.warn('Could not save chat history', e);
     }
   }, [chatHistory]);
 
+  // Handle Switching between registered businesses
+  const handleSelectBusiness = (businessId: string) => {
+    const target = businesses.find((b) => b.id === businessId);
+    if (!target) return;
+
+    setActiveBusinessId(target.id);
+    setFormData(target.formData);
+    setCrmSystem(target.crmSystem);
+    setChatHistory(target.chatHistory || []);
+    setErrorMessage(null);
+  };
+
+  // Handle adding a brand new business: switch view back to form
+  const handleAddNewBusiness = () => {
+    setActiveBusinessId(null);
+    setCrmSystem(null);
+    setChatHistory([]);
+    setFormData({
+      ...BUSINESS_PRESETS[0].data,
+      businessName: '',
+      city: 'Tegucigalpa',
+      country: 'Honduras',
+      services: '',
+    });
+    setErrorMessage(null);
+  };
+
+  // Generate CRM for the current form data and register/update in businesses list
   const handleGenerateCRM = async () => {
     setIsLoading(true);
     setErrorMessage(null);
 
     try {
-      // Execute 100% Client-Side generation with Gemini direct integration / local engine
       const generatedData = await generateCRMClientSide(formData);
 
       if (generatedData && generatedData.businessSummary) {
         setCrmSystem(generatedData);
 
+        const businessName = generatedData.businessSummary.name || formData.businessName || 'Mi Negocio';
+        const businessId = activeBusinessId || `biz_${businessName.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now().toString(36)}`;
+
         const initialGreeting: ChatMessage = {
           id: 'init-bot',
           role: 'assistant',
-          content: `¡Hola! Soy **CRM Master Pro**. He generado la estructura completa para **${generatedData.businessSummary.name}** guardada de forma 100% segura en tu navegador.\n\nPuedes explorar las pestañas de **Ficha de Cliente**, **Plantillas de WhatsApp**, **Control de Colaboradores** y la **Guía Paso a Paso**. Si deseas agregar o borrar algún campo, o cambiar algún mensaje, ¡escríbemelo aquí!`,
+          content: `¡Hola! Soy **CRM Master Pro**. He generado la estructura completa para **${businessName}** guardada de forma 100% segura en tu navegador.\n\nPuedes explorar las pestañas de **Ficha de Cliente**, **Plantillas de WhatsApp**, **Control de Colaboradores** y la **Guía Paso a Paso**. Si deseas agregar o borrar algún campo, o cambiar algún mensaje, ¡escríbemelo aquí!`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
 
-        setChatHistory([initialGreeting]);
+        const newChat = [initialGreeting];
+        setChatHistory(newChat);
+        setActiveBusinessId(businessId);
+
+        // Update businesses profile in list
+        setBusinesses((prev) => {
+          const existingIndex = prev.findIndex((b) => b.id === businessId || b.name.toLowerCase() === businessName.toLowerCase());
+          const newProfile: StoredBusinessProfile = {
+            id: businessId,
+            name: businessName,
+            businessType: formData.businessType,
+            city: formData.city || 'Ciudad',
+            country: formData.country || 'País',
+            currency: formData.currency || 'HNL',
+            currencySymbol: formData.currencySymbol || 'L',
+            createdAt: new Date().toISOString(),
+            formData: formData,
+            crmSystem: generatedData,
+            chatHistory: newChat,
+          };
+
+          if (existingIndex >= 0) {
+            const copy = [...prev];
+            copy[existingIndex] = newProfile;
+            return copy;
+          } else {
+            return [newProfile, ...prev];
+          }
+        });
 
         // Launch celebratory confetti
         confetti({
@@ -120,20 +239,22 @@ export default function App() {
     }
   };
 
-  const handleReset = () => {
-    setCrmSystem(null);
-    setChatHistory([]);
-    setErrorMessage(null);
-    try {
-      localStorage.removeItem(STORAGE_KEYS.CRM);
-      localStorage.removeItem(STORAGE_KEYS.CHAT);
-    } catch (e) {
-      console.warn('Could not clear localStorage', e);
-    }
-  };
-
   const handleOpenChatWithPrompt = (prompt: string) => {
     setExternalPrompt(prompt);
+  };
+
+  // Sync live refinements from Chat back to the stored profile
+  const handleCRMUpdatedFromChat = (updatedCRM: GeneratedCRMSystem) => {
+    setCrmSystem(updatedCRM);
+    if (activeBusinessId) {
+      setBusinesses((prev) =>
+        prev.map((b) =>
+          b.id === activeBusinessId
+            ? { ...b, crmSystem: updatedCRM, chatHistory }
+            : b
+        )
+      );
+    }
   };
 
   return (
@@ -143,11 +264,14 @@ export default function App() {
       <div className="absolute top-80 right-10 w-[500px] h-[350px] bg-teal-500/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 left-1/3 w-[600px] h-[400px] bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Global Header (Full width, unified dark) */}
+      {/* Global Multibusiness Header */}
       <Header
-        onReset={handleReset}
-        hasGeneratedCRM={!!crmSystem}
+        businesses={businesses}
+        activeBusinessId={activeBusinessId}
+        onSelectBusiness={handleSelectBusiness}
+        onAddNewBusiness={handleAddNewBusiness}
         onOpenHelp={() => setIsHelpOpen(true)}
+        hasGeneratedCRM={!!crmSystem}
       />
 
       {/* Help Modal */}
@@ -191,6 +315,31 @@ export default function App() {
                 Ingresa los datos de tu negocio de belleza, estética, barbería o salud. La IA diseñará tu base de datos para <strong className="text-slate-200">Google Sheets</strong>, plantillas de <strong className="text-slate-200">WhatsApp</strong> y control de comisiones en segundos.
               </p>
             </div>
+
+            {/* Quick switcher if there are other businesses saved */}
+            {businesses.length > 0 && (
+              <div className="bg-[#0e1526] p-4 rounded-2xl border border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-3">
+                  <Building2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Negocios Guardados en este Navegador</h4>
+                    <p className="text-[11px] text-slate-400">Tienes {businesses.length} empresa{businesses.length === 1 ? '' : 's'} registrada{businesses.length === 1 ? '' : 's'}. Puedes abrirla en 1 clic:</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {businesses.map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => handleSelectBusiness(b.id)}
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-emerald-900/60 text-slate-200 hover:text-emerald-300 border border-slate-700 hover:border-emerald-500/50 transition-all cursor-pointer"
+                    >
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Business Form */}
             <BusinessForm
@@ -243,14 +392,26 @@ export default function App() {
           /* View 2: Generated CRM Dashboard + Interactive Chat */
           <div className="space-y-6">
             <div className="flex items-center justify-between flex-wrap gap-3">
-              <button
-                id="btn-back-to-edit"
-                onClick={() => setCrmSystem(null)}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-300 hover:text-white bg-[#0d1322] hover:bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700 transition-colors shadow-md cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Modificar datos del negocio</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  id="btn-back-to-edit"
+                  onClick={() => setCrmSystem(null)}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-300 hover:text-white bg-[#0d1322] hover:bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700 transition-colors shadow-md cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Modificar datos de {crmSystem.businessSummary.name}</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-new-business-from-dash"
+                  onClick={handleAddNewBusiness}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300 hover:text-white bg-emerald-950/80 hover:bg-emerald-900 px-3 py-2 rounded-xl border border-emerald-700/80 transition-colors shadow-md cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>+ Registrar Otro Negocio</span>
+                </button>
+              </div>
 
               <div className="flex items-center gap-2">
                 <div className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-950/70 border border-emerald-800/80 px-2.5 py-1 rounded-lg">
@@ -272,6 +433,8 @@ export default function App() {
             {/* Results Dashboard Tabs */}
             <ResultsDashboard
               crm={crmSystem}
+              businessId={activeBusinessId || crmSystem.businessSummary.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}
+              businessData={formData}
               onOpenChatWithPrompt={handleOpenChatWithPrompt}
             />
 
@@ -281,7 +444,7 @@ export default function App() {
               setChatHistory={setChatHistory}
               currentCRM={crmSystem}
               businessData={formData}
-              onCRMUpdated={(updatedCRM) => setCrmSystem(updatedCRM)}
+              onCRMUpdated={handleCRMUpdatedFromChat}
               externalPrompt={externalPrompt}
               onClearExternalPrompt={() => setExternalPrompt('')}
             />
