@@ -1,6 +1,6 @@
 {
-  "name": "CRM Master Pro",
-  "description": "Generador de CRM gratuito y personalizado para negocios de belleza, estética, barberías, salud y cuidado personal.",
+  "name": "Gestor de Clientes, Entradas y Cuentas por Cobrar",
+  "description": "Organiza tus servicios, cobros diarios y saldos pendientes",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

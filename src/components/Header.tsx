@@ -46,14 +46,14 @@ export const Header: React.FC<HeaderProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-2">
-                  CRM Master Pro
+                  Gestor de Clientes, Entradas y Cuentas por Cobrar
                   <span className="text-[10px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                     Multinegocio
                   </span>
                 </h1>
               </div>
               <p className="text-xs text-slate-400 hidden sm:block">
-                Sistemas CRM Gratuitos para Negocios de Belleza & Salud
+                Organiza tus servicios, cobros diarios y saldos pendientes
               </p>
             </div>
           </div>

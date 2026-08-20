@@ -219,7 +219,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             }`}
           >
             <CreditCard className="w-4 h-4" />
-            <span>3. Control Colaboradores & Finanzas</span>
+            <span>3. Entradas, Cuentas por Cobrar & Gastos</span>
           </button>
 
           <button
@@ -460,82 +460,17 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           </div>
         )}
 
-        {/* ================= TAB 3: CONTROL DE COLABORADORES & FINANZAS ================= */}
+        {/* ================= TAB 3: ENTRADAS, CUENTAS POR COBRAR & GASTOS ================= */}
         {activeTab === 'colaboradores' && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <Users className="w-5 h-5 text-emerald-600" />
-                  Control de Colaboradores, Registro Diario & Finanzas
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Gestiona las ventas del día, el reparto automático de comisiones y el margen neto para <strong className="text-slate-800">{crm.businessSummary.name}</strong>.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  id="btn-download-closing-csv"
-                  onClick={handleDownloadClosingCSV}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                  title="Descargar plantilla de columnas para Google Sheets"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Descargar Plantilla Cierre (.CSV)</span>
-                </button>
-              </div>
-            </div>
-
             {/* Interactive Real Sales & Finance Manager */}
             <SalesFinanceManager
               businessId={businessId || crm.businessSummary.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}
               businessName={crm.businessSummary.name}
               currency={crm.businessSummary.currency}
               currencySymbol={crm.businessSummary.currency === 'HNL' ? 'L' : '$'}
-              commissionDefault={businessData?.commissionPercentage || 40}
-              moduloColaboradores={crm.moduloColaboradores}
               servicesList={businessData?.services || ''}
-              collaboratorsCount={businessData?.collaboratorsCount || 2}
             />
-
-            {/* Daily Closing Columns Format for Google Sheets */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-              <div className="bg-slate-900 text-white px-4 py-2.5 flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                  Estructura de Columnas para la Pestaña "Cierre Diario" en Google Sheets
-                </span>
-                <span className="text-[11px] text-slate-400">Fila 1 de tu Hoja</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 text-slate-900 uppercase font-semibold text-[11px] border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-4">Columna</th>
-                      <th className="py-2.5 px-4">Descripción</th>
-                      <th className="py-2.5 px-4">Fórmula en Google Sheets</th>
-                      <th className="py-2.5 px-4">Ejemplo</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {crm.moduloColaboradores.dailyClosingColumns.map((col, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/80">
-                        <td className="py-2.5 px-4 font-bold text-slate-900 font-mono">
-                          {col.columnName}
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-600">{col.description}</td>
-                        <td className="py-2.5 px-4">
-                          <code className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-mono font-bold text-[11px]">
-                            {col.formula || 'Entrada manual'}
-                          </code>
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-500">{col.exampleValue}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
         )}
 
@@ -889,6 +824,58 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                       </span>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Daily Closing Columns Format for Google Sheets / Excel */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs mt-6">
+                <div className="bg-slate-900 text-white px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 block">
+                      Estructura de Columnas para la Pestaña "Cierre Diario" en Google Sheets
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      Plantilla recomendada para registrar servicios y cobros diarios
+                    </span>
+                  </div>
+
+                  <button
+                    id="btn-download-closing-csv-tab4"
+                    onClick={handleDownloadClosingCSV}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0"
+                    title="Descargar plantilla de columnas para Google Sheets"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Descargar Plantilla Cierre (.CSV)</span>
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-50 text-slate-900 uppercase font-semibold text-[11px] border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-4">Columna</th>
+                        <th className="py-2.5 px-4">Descripción</th>
+                        <th className="py-2.5 px-4">Fórmula en Google Sheets</th>
+                        <th className="py-2.5 px-4">Ejemplo</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {crm.moduloColaboradores.dailyClosingColumns.map((col, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/80">
+                          <td className="py-2.5 px-4 font-bold text-slate-900 font-mono">
+                            {col.columnName}
+                          </td>
+                          <td className="py-2.5 px-4 text-slate-600">{col.description}</td>
+                          <td className="py-2.5 px-4">
+                            <code className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-mono font-bold text-[11px]">
+                              {col.formula || 'Entrada manual'}
+                            </code>
+                          </td>
+                          <td className="py-2.5 px-4 text-slate-500">{col.exampleValue}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

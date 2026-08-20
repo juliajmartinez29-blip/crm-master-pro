@@ -125,7 +125,7 @@ export interface ClientRecord {
 export interface SaleRecord {
   id: string;
   fecha: string;
-  colaborador: string;
+  colaborador?: string;
   cliente: string;
   clientePhone?: string;
   servicio: string;
@@ -133,9 +133,22 @@ export interface SaleRecord {
   montoPagado?: number;
   montoPendiente: number;
   metodoPago: string;
-  comisionPorcentaje: number;
-  comisionCalculada: number;
-  gananciaNeta: number;
+  comisionPorcentaje?: number;
+  comisionCalculada?: number;
+  gananciaNeta?: number;
+  notas?: string;
+  createdAt: string;
+}
+
+export interface ExpenseRecord {
+  id: string;
+  fecha: string;
+  lugarProveedor: string;
+  descripcion: string;
+  categoria: string;
+  frecuencia: 'Sin Frecuencia' | 'Puntual / Diario' | 'Semanal' | 'Mensual' | 'Anual';
+  estado: 'Pagado' | 'Pendiente por Pagar';
+  monto: number;
   notas?: string;
   createdAt: string;
 }

@@ -18,6 +18,7 @@ import {
   HardDrive,
   Building2,
   Plus,
+  MapPin,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -188,7 +189,7 @@ export default function App() {
         const initialGreeting: ChatMessage = {
           id: 'init-bot',
           role: 'assistant',
-          content: `¡Hola! Soy **CRM Master Pro**. He generado la estructura completa para **${businessName}** guardada de forma 100% segura en tu navegador.\n\nPuedes explorar las pestañas de **Ficha de Cliente**, **Plantillas de WhatsApp**, **Control de Colaboradores** y la **Guía Paso a Paso**. Si deseas agregar o borrar algún campo, o cambiar algún mensaje, ¡escríbemelo aquí!`,
+          content: `¡Hola! He preparado el **Gestor de Clientes, Entradas y Cuentas por Cobrar** para **${businessName}**, guardado de forma 100% segura en tu navegador.\n\nPuedes explorar las pestañas de **Gestor de Clientes**, **Plantillas de WhatsApp**, **Entradas, Cuentas por Cobrar & Gastos** y la **Guía Paso a Paso**. ¡Todo listo para organizar cobros y saldos pendientes!`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
 
@@ -303,40 +304,88 @@ export default function App() {
             <div className="text-center space-y-3 py-4 sm:py-6">
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/80 text-emerald-300 text-xs font-bold border border-emerald-700/60 shadow-lg shadow-emerald-950/40">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Generador de Sistemas CRM 100% Gratuitos</span>
+                <span>Gestor Operativo & Financiero Gratuito</span>
               </div>
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-white tracking-tight leading-tight">
-                Control Total de tu Negocio{' '}
+                Gestor de Clientes, Entradas{' '}
                 <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
-                  sin Suscripciones
+                  y Cuentas por Cobrar
                 </span>
               </h2>
-              <p className="text-sm sm:text-base text-slate-400 max-w-2xl mx-auto leading-relaxed">
-                Ingresa los datos de tu negocio de belleza, estética, barbería o salud. La IA diseñará tu base de datos para <strong className="text-slate-200">Google Sheets</strong>, plantillas de <strong className="text-slate-200">WhatsApp</strong> y control de comisiones en segundos.
+              <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
+                Organiza tus servicios, cobros diarios y saldos pendientes
               </p>
             </div>
 
-            {/* Quick switcher if there are other businesses saved */}
+            {/* Panel Destacado de Negocios Registrados */}
             {businesses.length > 0 && (
-              <div className="bg-[#0e1526] p-4 rounded-2xl border border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
-                <div className="flex items-center gap-3">
-                  <Building2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-bold text-white">Negocios Guardados en este Navegador</h4>
-                    <p className="text-[11px] text-slate-400">Tienes {businesses.length} empresa{businesses.length === 1 ? '' : 's'} registrada{businesses.length === 1 ? '' : 's'}. Puedes abrirla en 1 clic:</p>
+              <div className="bg-gradient-to-br from-[#0e1628] via-[#0d1322] to-[#0a0f1d] p-5 sm:p-6 rounded-2xl border border-slate-700/80 shadow-xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-700/60 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                      <Building2 className="w-4.5 h-4.5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                        Tus Negocios Registrados
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/40 font-mono">
+                          {businesses.length}
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Selecciona un negocio para abrir su panel operativo y cuentas por cobrar:
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {businesses.map((b) => (
-                    <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => handleSelectBusiness(b.id)}
-                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-emerald-900/60 text-slate-200 hover:text-emerald-300 border border-slate-700 hover:border-emerald-500/50 transition-all cursor-pointer"
-                    >
-                      {b.name}
-                    </button>
-                  ))}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+                  {businesses.map((b) => {
+                    const storageKey = `crm_sales_db_${b.id || b.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+                    let pendingDebt = 0;
+                    try {
+                      const raw = localStorage.getItem(storageKey);
+                      if (raw) {
+                        const parsedSales = JSON.parse(raw);
+                        if (Array.isArray(parsedSales)) {
+                          pendingDebt = parsedSales.reduce((sum: number, s: any) => sum + (Number(s.montoPendiente) || 0), 0);
+                        }
+                      }
+                    } catch {}
+
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => handleSelectBusiness(b.id)}
+                        className="p-4 rounded-xl bg-[#131b2e] hover:bg-[#19243d] border border-slate-700/80 hover:border-emerald-500/60 transition-all text-left group flex flex-col justify-between space-y-3 cursor-pointer shadow-md hover:shadow-emerald-950/40 hover:-translate-y-0.5"
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className="font-bold text-sm text-white group-hover:text-emerald-300 transition-colors truncate">
+                              {b.name}
+                            </h4>
+                            <span className="text-[10px] uppercase font-bold text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded shrink-0">
+                              {b.city}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-slate-500" />
+                            <span>{b.city}, {b.country}</span>
+                          </p>
+                        </div>
+
+                        <div className="pt-2.5 border-t border-slate-700/60 flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase text-slate-400">
+                            Total Pendiente por Cobrar:
+                          </span>
+                          <span className={`text-xs font-black font-mono px-2 py-0.5 rounded ${pendingDebt > 0 ? 'bg-amber-950/80 text-amber-300 border border-amber-800/80' : 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/60'}`}>
+                            {b.currencySymbol || '$'} {pendingDebt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
